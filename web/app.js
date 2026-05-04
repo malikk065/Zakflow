@@ -60,17 +60,30 @@ function showFirebaseSetup() {
   `;
 }
 
+function parseFirebaseConfig(input) {
+  try {
+    const parsed = JSON.parse(input);
+    if (parsed.apiKey) return parsed;
+  } catch (_) {}
+
+  let cleaned = input.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  const match = cleaned.match(/\{[^{}]*apiKey[^{}]*\}/s);
+  if (match) {
+    let configStr = match[0];
+    configStr = configStr.replace(/(\w+)\s*:/g, '"$1":');
+    configStr = configStr.replace(/""+/g, '"');
+    configStr = configStr.replace(/;\s*$/, '');
+    configStr = configStr.replace(/,\s*}/g, '}');
+    try { return JSON.parse(configStr); } catch (_) {}
+  }
+  return null;
+}
+
 async function connectFirebasePWA() {
   const input = document.getElementById('pwa-firebase-input').value.trim();
-  let config;
-  try {
-    config = JSON.parse(input);
-  } catch (e) {
-    alert('Ungültiges JSON Format');
-    return;
-  }
-  if (!config.apiKey || !config.projectId) {
-    alert('apiKey und projectId fehlen');
+  const config = parseFirebaseConfig(input);
+  if (!config || !config.apiKey || !config.projectId) {
+    alert('Config konnte nicht erkannt werden');
     return;
   }
 

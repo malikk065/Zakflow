@@ -989,6 +989,37 @@ function insertSavedItem(index) {
 // ==========================
 // FIREBASE CONNECT
 // ==========================
+function parseFirebaseConfig(input) {
+  // Versuche direkt als JSON zu parsen
+  try {
+    const parsed = JSON.parse(input);
+    if (parsed.apiKey) return parsed;
+  } catch (_) {}
+
+  // Firebase-Code-Block: extrahiere das Config-Objekt
+  // Entferne Links im Markdown-Format: [text](url) → text
+  let cleaned = input.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+
+  // Suche nach dem firebaseConfig Objekt
+  const match = cleaned.match(/\{[^{}]*apiKey[^{}]*\}/s);
+  if (match) {
+    let configStr = match[0];
+    // Property-Namen in Anführungszeichen setzen: apiKey: → "apiKey":
+    configStr = configStr.replace(/(\w+)\s*:/g, '"$1":');
+    // Doppelte Anführungszeichen bei bereits vorhandenen fixen
+    configStr = configStr.replace(/""+/g, '"');
+    // Semikolon am Ende entfernen
+    configStr = configStr.replace(/;\s*$/, '');
+    // Trailing comma vor } entfernen
+    configStr = configStr.replace(/,\s*}/g, '}');
+    try {
+      return JSON.parse(configStr);
+    } catch (_) {}
+  }
+
+  return null;
+}
+
 async function connectFirebase() {
   const input = document.getElementById('firebase-config-input').value.trim();
   if (!input) {
@@ -996,16 +1027,9 @@ async function connectFirebase() {
     return;
   }
 
-  let config;
-  try {
-    config = JSON.parse(input);
-  } catch (e) {
-    showToast('Ungültiges JSON Format', 'error');
-    return;
-  }
-
-  if (!config.apiKey || !config.projectId) {
-    showToast('apiKey und projectId fehlen', 'error');
+  const config = parseFirebaseConfig(input);
+  if (!config || !config.apiKey || !config.projectId) {
+    showToast('Config konnte nicht erkannt werden', 'error');
     return;
   }
 
