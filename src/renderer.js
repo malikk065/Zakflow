@@ -408,7 +408,7 @@ function recalculateInvoice() {
     const itemNetto = item.quantity * item.price;
     netto += itemNetto;
     if (settings && settings.taxMode === 'regelbesteuerung') {
-      mwst += itemNetto * ((item.taxRate || 19) / 100);
+      mwst += itemNetto * ((item.taxRate != null ? item.taxRate : 19) / 100);
     }
   }
 

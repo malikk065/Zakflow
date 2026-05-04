@@ -275,7 +275,7 @@ class Store {
       netto += itemNetto;
 
       if (settings && settings.taxMode === 'regelbesteuerung') {
-        const rate = item.taxRate || 19;
+        const rate = item.taxRate != null ? item.taxRate : 19;
         mwst += itemNetto * (rate / 100);
       }
     }

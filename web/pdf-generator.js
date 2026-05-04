@@ -288,7 +288,7 @@ async function generateInvoicePDF({ invoice, settings, customer, totals, logoDat
           formatNumber(item.quantity),
           item.unit || 'Stk.',
           formatCurrencyPDF(item.price),
-          `${item.taxRate || 19}%`,
+          `${item.taxRate != null ? item.taxRate : 19}%`,
           formatCurrencyPDF(itemTotal),
         ];
 
@@ -353,7 +353,7 @@ async function generateInvoicePDF({ invoice, settings, customer, totals, logoDat
     // MwSt aufschlüsseln
     const taxGroups = {};
     for (const item of items) {
-      const rate = item.taxRate || 19;
+      const rate = item.taxRate != null ? item.taxRate : 19;
       if (!taxGroups[rate]) taxGroups[rate] = 0;
       taxGroups[rate] += item.quantity * item.price * (rate / 100);
     }
