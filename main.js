@@ -331,6 +331,24 @@ ipcMain.handle('dataPath:choose', async () => {
   return newPath;
 });
 
+// Firebase Config
+ipcMain.handle('firebase:getConfig', () => {
+  const filePath = path.join(getDataPath(), 'firebase-config.json');
+  return readJSON(filePath) || null;
+});
+
+ipcMain.handle('firebase:saveConfig', (_event, config) => {
+  const filePath = path.join(getDataPath(), 'firebase-config.json');
+  writeJSON(filePath, config);
+  return true;
+});
+
+ipcMain.handle('firebase:removeConfig', () => {
+  const filePath = path.join(getDataPath(), 'firebase-config.json');
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  return true;
+});
+
 // Saved Items (Gespeicherte Positionen)
 ipcMain.handle('savedItems:getAll', () => {
   const filePath = path.join(getDataPath(), 'saved-items.json');

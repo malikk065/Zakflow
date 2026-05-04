@@ -11,9 +11,24 @@ if ('serviceWorker' in navigator) {
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', async () => {
-  // Dark Mode aus Firestore laden
   darkMode = localStorage.getItem('darkMode') === 'true';
   applyDarkMode();
+
+  // Firebase Config aus localStorage laden
+  const savedConfig = localStorage.getItem('firebaseConfig');
+  if (savedConfig) {
+    try {
+      const config = JSON.parse(savedConfig);
+      const ok = initFirebase(config);
+      if (ok) store.useFirebase = true;
+    } catch (e) { console.warn('Firebase config parse error:', e); }
+  }
+
+  // Wenn keine Firebase Config → Setup-Hinweis zeigen
+  if (!firebaseReady) {
+    showFirebaseSetup();
+    return;
+  }
 
   // Passwort prüfen
   try {
@@ -27,6 +42,47 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await initApp();
 });
+
+function showFirebaseSetup() {
+  document.querySelector('.app').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:center;height:100vh;padding:20px;">
+      <div style="max-width:400px;text-align:center;">
+        <h2 style="margin-bottom:8px;">&#9729; Cloud verbinden</h2>
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:20px;">
+          Füge deine eigene Firebase Config ein, um die App zu nutzen.
+          <a href="https://console.firebase.google.com" target="_blank" style="color:var(--accent);">Firebase Console</a>
+        </p>
+        <textarea id="pwa-firebase-input" rows="8" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:monospace;background:var(--bg-secondary);color:var(--text-primary);margin-bottom:12px;"
+          placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}'></textarea>
+        <button class="btn btn-primary" style="width:100%;" onclick="connectFirebasePWA()">Verbinden</button>
+      </div>
+    </div>
+  `;
+}
+
+async function connectFirebasePWA() {
+  const input = document.getElementById('pwa-firebase-input').value.trim();
+  let config;
+  try {
+    config = JSON.parse(input);
+  } catch (e) {
+    alert('Ungültiges JSON Format');
+    return;
+  }
+  if (!config.apiKey || !config.projectId) {
+    alert('apiKey und projectId fehlen');
+    return;
+  }
+
+  const ok = initFirebase(config);
+  if (ok) {
+    localStorage.setItem('firebaseConfig', JSON.stringify(config));
+    store.useFirebase = true;
+    location.reload();
+  } else {
+    alert('Firebase Verbindung fehlgeschlagen');
+  }
+}
 
 async function initApp() {
   await store.loadSettings();

@@ -5,7 +5,7 @@ class Store {
     this.settings = null;
     this.customers = [];
     this.invoices = [];
-    this.useFirebase = typeof firebase !== 'undefined' && typeof db !== 'undefined';
+    this.useFirebase = false; // Wird erst true wenn Firebase verbunden ist
     this.isElectron = typeof window.api !== 'undefined';
     this._listeners = [];
     this.onDataChanged = null; // Callback für UI-Updates bei Echtzeit-Änderungen

@@ -13,12 +13,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   darkMode = await window.api.getDarkMode();
   applyDarkMode();
 
+  // Firebase Config laden und verbinden
+  const fbConfig = await window.api.getFirebaseConfig();
+  if (fbConfig) {
+    const ok = initFirebase(fbConfig);
+    if (ok) store.useFirebase = true;
+  }
+
   // Passwortschutz prüfen
   const hasPassword = await window.api.getPasswordHash();
   if (hasPassword) {
     document.getElementById('password-overlay').style.display = 'flex';
     document.getElementById('password-input').focus();
-    return; // App erst nach Passwort-Eingabe laden
+    return;
   }
 
   await initApp();
@@ -693,6 +700,7 @@ async function renderSettingsForm() {
   updateNumberPreview();
   renderSavedItemsList();
   updatePasswordStatus();
+  renderFirebaseStatus();
 }
 
 async function renderLogoPreview() {
@@ -709,13 +717,21 @@ async function renderLogoPreview() {
 }
 
 async function uploadLogo() {
-  const result = await window.api.uploadLogo();
-  if (result) {
-    // Logo-Pfad in Settings speichern
-    store.settings.logoPath = result;
-    await store.saveSettings(store.settings);
-    showToast('Logo hochgeladen', 'success');
-    await renderLogoPreview();
+  console.log('uploadLogo aufgerufen');
+  try {
+    const result = await window.api.uploadLogo();
+    console.log('uploadLogo Ergebnis:', result);
+    if (result) {
+      store.settings.logoPath = result;
+      await store.saveSettings(store.settings);
+      showToast('Logo hochgeladen', 'success');
+      await renderLogoPreview();
+    } else {
+      console.log('Upload abgebrochen oder fehlgeschlagen');
+    }
+  } catch (err) {
+    console.error('uploadLogo Fehler:', err);
+    showToast('Logo-Fehler: ' + err.message, 'error');
   }
 }
 
@@ -968,6 +984,78 @@ function insertSavedItem(index) {
   renderInvoiceItems();
   recalculateInvoice();
   showToast(`"${item.description}" hinzugefügt`, 'success');
+}
+
+// ==========================
+// FIREBASE CONNECT
+// ==========================
+async function connectFirebase() {
+  const input = document.getElementById('firebase-config-input').value.trim();
+  if (!input) {
+    showToast('Bitte Firebase Config einfügen', 'error');
+    return;
+  }
+
+  let config;
+  try {
+    config = JSON.parse(input);
+  } catch (e) {
+    showToast('Ungültiges JSON Format', 'error');
+    return;
+  }
+
+  if (!config.apiKey || !config.projectId) {
+    showToast('apiKey und projectId fehlen', 'error');
+    return;
+  }
+
+  const success = initFirebase(config);
+  if (success) {
+    await window.api.saveFirebaseConfig(config);
+    store.useFirebase = true;
+
+    // Lokale Daten nach Firebase hochladen
+    await syncToFirebase();
+
+    // Echtzeit-Sync starten
+    store.onDataChanged = (type) => {
+      if (type === 'customers') { renderCustomersList(); updateInvoiceForm(); }
+      if (type === 'invoices') { renderDashboard(); }
+      if (type === 'settings') { renderSettingsForm(); updateInvoiceForm(); }
+    };
+    store.startRealtimeSync();
+
+    showToast('Firebase verbunden! Daten werden synchronisiert.', 'success');
+  } else {
+    showToast('Firebase Verbindung fehlgeschlagen', 'error');
+  }
+
+  renderFirebaseStatus();
+}
+
+async function disconnectFirebase() {
+  store.stopRealtimeSync();
+  store.useFirebase = false;
+  firebaseReady = false;
+  db = null;
+
+  if (window.api) await window.api.removeFirebaseConfig();
+
+  showToast('Firebase getrennt', 'success');
+  renderFirebaseStatus();
+}
+
+function renderFirebaseStatus() {
+  const el = document.getElementById('firebase-status');
+  if (!el) return;
+
+  if (firebaseReady && db) {
+    const projectId = firebase.app().options.projectId || 'Unbekannt';
+    el.innerHTML = `<span style="color:var(--success);font-weight:600;">✅ Verbunden</span> <span style="color:var(--text-secondary);font-size:12px;">— Projekt: ${projectId}</span>`;
+    document.getElementById('firebase-config-input').value = '';
+  } else {
+    el.innerHTML = '<span style="color:var(--text-secondary);">❌ Nicht verbunden — Daten nur lokal gespeichert</span>';
+  }
 }
 
 // ==========================

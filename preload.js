@@ -27,6 +27,11 @@ contextBridge.exposeInMainWorld('api', {
   // PDF Import
   importPDFs: () => ipcRenderer.invoke('pdf:import'),
 
+  // Firebase Config
+  getFirebaseConfig: () => ipcRenderer.invoke('firebase:getConfig'),
+  saveFirebaseConfig: (config) => ipcRenderer.invoke('firebase:saveConfig', config),
+  removeFirebaseConfig: () => ipcRenderer.invoke('firebase:removeConfig'),
+
   // Saved Items
   getSavedItems: () => ipcRenderer.invoke('savedItems:getAll'),
   saveSavedItems: (items) => ipcRenderer.invoke('savedItems:save', items),
