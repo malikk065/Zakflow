@@ -49,41 +49,35 @@ function showFirebaseSetup() {
       <div style="max-width:400px;text-align:center;">
         <h2 style="margin-bottom:8px;">&#9729; Cloud verbinden</h2>
         <p style="color:var(--text-secondary);font-size:13px;margin-bottom:20px;">
-          Füge deine eigene Firebase Config ein, um die App zu nutzen.
+          Trage deine Firebase-Daten einzeln ein.
           <a href="https://console.firebase.google.com" target="_blank" style="color:var(--accent);">Firebase Console</a>
         </p>
-        <textarea id="pwa-firebase-input" rows="8" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:monospace;background:var(--bg-secondary);color:var(--text-primary);margin-bottom:12px;"
-          placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}'></textarea>
+        <div style="text-align:left;display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+          <input id="pwa-fb-apiKey" type="text" placeholder="API Key" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg-secondary);color:var(--text-primary);box-sizing:border-box;" />
+          <input id="pwa-fb-authDomain" type="text" placeholder="Auth Domain" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg-secondary);color:var(--text-primary);box-sizing:border-box;" />
+          <input id="pwa-fb-projectId" type="text" placeholder="Project ID" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg-secondary);color:var(--text-primary);box-sizing:border-box;" />
+          <input id="pwa-fb-storageBucket" type="text" placeholder="Storage Bucket" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg-secondary);color:var(--text-primary);box-sizing:border-box;" />
+          <input id="pwa-fb-messagingSenderId" type="text" placeholder="Messaging Sender ID" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg-secondary);color:var(--text-primary);box-sizing:border-box;" />
+          <input id="pwa-fb-appId" type="text" placeholder="App ID" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg-secondary);color:var(--text-primary);box-sizing:border-box;" />
+        </div>
         <button class="btn btn-primary" style="width:100%;" onclick="connectFirebasePWA()">Verbinden</button>
       </div>
     </div>
   `;
 }
 
-function parseFirebaseConfig(input) {
-  try {
-    const parsed = JSON.parse(input);
-    if (parsed.apiKey) return parsed;
-  } catch (_) {}
-
-  let cleaned = input.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
-  const match = cleaned.match(/\{[^{}]*apiKey[^{}]*\}/s);
-  if (match) {
-    let configStr = match[0];
-    configStr = configStr.replace(/(\w+)\s*:/g, '"$1":');
-    configStr = configStr.replace(/""+/g, '"');
-    configStr = configStr.replace(/;\s*$/, '');
-    configStr = configStr.replace(/,\s*}/g, '}');
-    try { return JSON.parse(configStr); } catch (_) {}
-  }
-  return null;
-}
-
 async function connectFirebasePWA() {
-  const input = document.getElementById('pwa-firebase-input').value.trim();
-  const config = parseFirebaseConfig(input);
-  if (!config || !config.apiKey || !config.projectId) {
-    alert('Config konnte nicht erkannt werden');
+  const config = {
+    apiKey: document.getElementById('pwa-fb-apiKey').value.trim(),
+    authDomain: document.getElementById('pwa-fb-authDomain').value.trim(),
+    projectId: document.getElementById('pwa-fb-projectId').value.trim(),
+    storageBucket: document.getElementById('pwa-fb-storageBucket').value.trim(),
+    messagingSenderId: document.getElementById('pwa-fb-messagingSenderId').value.trim(),
+    appId: document.getElementById('pwa-fb-appId').value.trim(),
+  };
+
+  if (!config.apiKey || !config.projectId) {
+    alert('Bitte mindestens API Key und Project ID eingeben');
     return;
   }
 

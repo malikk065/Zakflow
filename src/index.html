@@ -373,11 +373,41 @@
           </div>
 
           <h3>Cloud-Sync (Firebase)</h3>
-          <p style="color:var(--text-secondary);font-size:12px;margin-bottom:12px;">Verbinde deine eigene Firebase-Datenbank, um Daten zwischen Geräten zu synchronisieren. <a href="https://console.firebase.google.com" target="_blank" style="color:var(--accent);">Firebase Console</a></p>
+          <p style="color:var(--text-secondary);font-size:12px;margin-bottom:12px;">Verbinde deine eigene Firebase-Datenbank, um Daten zwischen Geräten zu synchronisieren.</p>
           <div id="firebase-status" style="margin-bottom:12px;"></div>
-          <div class="form-group">
-            <label>Firebase Config (JSON)</label>
-            <textarea id="firebase-config-input" rows="6" placeholder="Ganzen Firebase-Code hier einfügen (direkt von der Firebase Console kopieren)..."></textarea>
+          <div class="form-row">
+            <div class="form-group">
+              <label>API Key</label>
+              <input type="text" id="fb-apiKey" placeholder="AIzaSy...">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Auth Domain</label>
+              <input type="text" id="fb-authDomain" placeholder="meinprojekt.firebaseapp.com">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Project ID</label>
+              <input type="text" id="fb-projectId" placeholder="meinprojekt-12345">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Storage Bucket</label>
+              <input type="text" id="fb-storageBucket" placeholder="meinprojekt-12345.firebasestorage.app">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Messaging Sender ID</label>
+              <input type="text" id="fb-messagingSenderId" placeholder="123456789">
+            </div>
+            <div class="form-group">
+              <label>App ID</label>
+              <input type="text" id="fb-appId" placeholder="1:123:web:abc123">
+            </div>
           </div>
           <div style="display:flex;gap:8px;margin-bottom:16px;">
             <button type="button" class="btn btn-small btn-primary" onclick="connectFirebase()">Verbinden</button>

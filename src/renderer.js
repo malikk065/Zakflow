@@ -1021,15 +1021,17 @@ function parseFirebaseConfig(input) {
 }
 
 async function connectFirebase() {
-  const input = document.getElementById('firebase-config-input').value.trim();
-  if (!input) {
-    showToast('Bitte Firebase Config einfügen', 'error');
-    return;
-  }
+  const config = {
+    apiKey: document.getElementById('fb-apiKey').value.trim(),
+    authDomain: document.getElementById('fb-authDomain').value.trim(),
+    projectId: document.getElementById('fb-projectId').value.trim(),
+    storageBucket: document.getElementById('fb-storageBucket').value.trim(),
+    messagingSenderId: document.getElementById('fb-messagingSenderId').value.trim(),
+    appId: document.getElementById('fb-appId').value.trim(),
+  };
 
-  const config = parseFirebaseConfig(input);
-  if (!config || !config.apiKey || !config.projectId) {
-    showToast('Config konnte nicht erkannt werden', 'error');
+  if (!config.apiKey || !config.projectId) {
+    showToast('Bitte mindestens API Key und Project ID eingeben', 'error');
     return;
   }
 
@@ -1074,9 +1076,15 @@ function renderFirebaseStatus() {
   if (!el) return;
 
   if (firebaseReady && db) {
-    const projectId = firebase.app().options.projectId || 'Unbekannt';
-    el.innerHTML = `<span style="color:var(--success);font-weight:600;">✅ Verbunden</span> <span style="color:var(--text-secondary);font-size:12px;">— Projekt: ${projectId}</span>`;
-    document.getElementById('firebase-config-input').value = '';
+    const opts = firebase.app().options;
+    el.innerHTML = `<span style="color:var(--success);font-weight:600;">✅ Verbunden</span> <span style="color:var(--text-secondary);font-size:12px;">— Projekt: ${opts.projectId || 'Unbekannt'}</span>`;
+    // Felder vorausfüllen
+    document.getElementById('fb-apiKey').value = opts.apiKey || '';
+    document.getElementById('fb-authDomain').value = opts.authDomain || '';
+    document.getElementById('fb-projectId').value = opts.projectId || '';
+    document.getElementById('fb-storageBucket').value = opts.storageBucket || '';
+    document.getElementById('fb-messagingSenderId').value = opts.messagingSenderId || '';
+    document.getElementById('fb-appId').value = opts.appId || '';
   } else {
     el.innerHTML = '<span style="color:var(--text-secondary);">❌ Nicht verbunden — Daten nur lokal gespeichert</span>';
   }
