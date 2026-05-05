@@ -74,6 +74,7 @@ async function initApp() {
       renderExpensesList();
     }
     if (type === 'settings') {
+      loadExpenseCategories();
       renderSettingsForm();
       updateInvoiceForm();
     }
@@ -82,11 +83,13 @@ async function initApp() {
 
   setupNavigation();
   setupForms();
+  loadExpenseCategories();
   renderDashboard();
   renderCustomersList();
   renderExpensesList();
   await loadTeams();
   renderSettingsForm();
+  renderExpenseCategoriesSettings();
   updateInvoiceForm();
   updateNumberPreview();
   initFinanceYearSelect();
@@ -780,6 +783,8 @@ async function renderSettingsForm() {
   // Logo
   await renderLogoPreview();
   updateNumberPreview();
+  loadExpenseCategories();
+  renderExpenseCategoriesSettings();
   renderSavedItemsList();
   renderFirebaseStatus();
 }
@@ -1590,7 +1595,7 @@ async function confirmImport() {
 // ==========================
 // EXPENSES (Ausgaben)
 // ==========================
-const EXPENSE_CATEGORIES = {
+const DEFAULT_EXPENSE_CATEGORIES = {
   material: { label: 'Material & Waren', icon: '📦' },
   buero: { label: 'Büro & Ausstattung', icon: '🖨️' },
   software: { label: 'Software & Lizenzen', icon: '💻' },
@@ -1602,6 +1607,77 @@ const EXPENSE_CATEGORIES = {
   miete: { label: 'Miete & Nebenkosten', icon: '🏠' },
   sonstiges: { label: 'Sonstiges', icon: '📎' },
 };
+
+let EXPENSE_CATEGORIES = { ...DEFAULT_EXPENSE_CATEGORIES };
+
+function loadExpenseCategories() {
+  if (store.settings && store.settings.expenseCategories) {
+    EXPENSE_CATEGORIES = store.settings.expenseCategories;
+  } else {
+    EXPENSE_CATEGORIES = { ...DEFAULT_EXPENSE_CATEGORIES };
+  }
+  updateCategoryDropdowns();
+}
+
+function updateCategoryDropdowns() {
+  // Alle Kategorie-Dropdowns im DOM aktualisieren
+  const selects = document.querySelectorAll('#expense-category, #filter-expense-category, #inp-category');
+  selects.forEach(select => {
+    const currentVal = select.value;
+    const isFilter = select.id === 'filter-expense-category';
+    let html = isFilter ? '<option value="">Alle Kategorien</option>' : '';
+    for (const [key, cat] of Object.entries(EXPENSE_CATEGORIES)) {
+      html += `<option value="${key}">${cat.icon} ${cat.label}</option>`;
+    }
+    select.innerHTML = html;
+    if (currentVal && select.querySelector(`option[value="${currentVal}"]`)) {
+      select.value = currentVal;
+    }
+  });
+}
+
+function renderExpenseCategoriesSettings() {
+  const container = document.getElementById('expense-categories-settings');
+  if (!container) return;
+
+  const entries = Object.entries(EXPENSE_CATEGORIES);
+  container.innerHTML = entries.map(([key, cat]) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border-light);">
+      <input type="text" value="${cat.icon}" style="width:44px;text-align:center;padding:6px;border:1px solid var(--border);border-radius:6px;font-size:16px;background:var(--bg-tertiary);" onchange="updateExpenseCategory('${key}','icon',this.value)">
+      <input type="text" value="${escapeHtml(cat.label)}" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--bg-secondary);color:var(--text-primary);" onchange="updateExpenseCategory('${key}','label',this.value)">
+      <button type="button" class="btn-icon" onclick="removeExpenseCategory('${key}')" title="Entfernen" style="color:var(--danger);">✕</button>
+    </div>
+  `).join('');
+}
+
+function updateExpenseCategory(key, field, value) {
+  if (!EXPENSE_CATEGORIES[key]) return;
+  EXPENSE_CATEGORIES[key][field] = value;
+  saveExpenseCategoriesToSettings();
+}
+
+function removeExpenseCategory(key) {
+  if (Object.keys(EXPENSE_CATEGORIES).length <= 1) {
+    showToast('Mindestens eine Kategorie muss bleiben', 'error');
+    return;
+  }
+  delete EXPENSE_CATEGORIES[key];
+  saveExpenseCategoriesToSettings();
+  renderExpenseCategoriesSettings();
+}
+
+function addExpenseCategory() {
+  const id = 'kat_' + Date.now().toString(36);
+  EXPENSE_CATEGORIES[id] = { label: 'Neue Kategorie', icon: '📁' };
+  saveExpenseCategoriesToSettings();
+  renderExpenseCategoriesSettings();
+}
+
+async function saveExpenseCategoriesToSettings() {
+  store.settings.expenseCategories = { ...EXPENSE_CATEGORIES };
+  await store.saveSettings(store.settings);
+  updateCategoryDropdowns();
+}
 
 function renderExpensesList() {
   const tbody = document.getElementById('expenses-tbody');

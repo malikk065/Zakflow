@@ -145,18 +145,7 @@
         <div class="form-row">
           <div class="form-group">
             <label>Kategorie</label>
-            <select id="inp-category">
-              <option value="material">Material & Waren</option>
-              <option value="buero">Büro & Ausstattung</option>
-              <option value="software">Software & Lizenzen</option>
-              <option value="fahrt">Fahrtkosten</option>
-              <option value="versicherung">Versicherungen</option>
-              <option value="telefon">Telefon & Internet</option>
-              <option value="werbung">Werbung & Marketing</option>
-              <option value="beratung">Beratung & Buchhaltung</option>
-              <option value="miete">Miete & Nebenkosten</option>
-              <option value="sonstiges">Sonstiges</option>
-            </select>
+            <select id="inp-category"></select>
           </div>
           <div class="form-group">
             <label>MwSt</label>
@@ -204,6 +193,34 @@
     const encodedConfig = params.get('c');
     teamId = params.get('t');
 
+    const DEFAULT_CATEGORIES = {
+      material: { label: 'Material & Waren', icon: '📦' },
+      buero: { label: 'Büro & Ausstattung', icon: '🖨️' },
+      software: { label: 'Software & Lizenzen', icon: '💻' },
+      fahrt: { label: 'Fahrtkosten', icon: '🚗' },
+      versicherung: { label: 'Versicherungen', icon: '🛡️' },
+      telefon: { label: 'Telefon & Internet', icon: '📱' },
+      werbung: { label: 'Werbung & Marketing', icon: '📣' },
+      beratung: { label: 'Beratung & Buchhaltung', icon: '📋' },
+      miete: { label: 'Miete & Nebenkosten', icon: '🏠' },
+      sonstiges: { label: 'Sonstiges', icon: '📎' },
+    };
+
+    async function loadCategories() {
+      let categories = DEFAULT_CATEGORIES;
+      try {
+        const settingsDoc = await db.collection('app').doc('settings').get();
+        if (settingsDoc.exists && settingsDoc.data().expenseCategories) {
+          categories = settingsDoc.data().expenseCategories;
+        }
+      } catch (e) { /* use defaults */ }
+
+      const select = document.getElementById('inp-category');
+      select.innerHTML = Object.entries(categories).map(([key, cat]) =>
+        `<option value="${key}">${cat.icon} ${cat.label}</option>`
+      ).join('');
+    }
+
     async function init() {
       if (!encodedConfig || !teamId) {
         showState('invalid');
@@ -226,6 +243,9 @@
         teamData = teamDoc.data();
         document.getElementById('team-name-badge').textContent = teamData.name || 'Team';
         document.title = `Ausgabe - ${teamData.name}`;
+
+        // Kategorien laden
+        await loadCategories();
 
         // Datum auf heute setzen
         document.getElementById('inp-date').value = new Date().toISOString().split('T')[0];
