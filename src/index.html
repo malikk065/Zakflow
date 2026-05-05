@@ -7,14 +7,187 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <!-- Password Overlay -->
-  <div class="password-overlay" id="password-overlay" style="display:none;">
-    <div class="password-box">
-      <h2>🔒 Rechnungsapp</h2>
-      <p>Bitte gib dein Passwort ein</p>
-      <input type="password" id="password-input" placeholder="Passwort" onkeydown="if(event.key==='Enter')checkPassword()">
-      <div class="password-error" id="password-error">Falsches Passwort</div>
-      <button class="btn btn-primary" style="width:100%;" onclick="checkPassword()">Entsperren</button>
+  <!-- Auth Overlay -->
+  <div class="auth-overlay" id="auth-overlay" style="display:none;">
+    <div class="auth-box auth-box-wide">
+
+      <!-- Setup Wizard (mehrstufig) -->
+      <div id="setup-wizard" style="display:none;">
+        <!-- Progress -->
+        <div class="wizard-progress">
+          <div class="wizard-step-indicator active" data-step="1">1</div>
+          <div class="wizard-line"></div>
+          <div class="wizard-step-indicator" data-step="2">2</div>
+          <div class="wizard-line"></div>
+          <div class="wizard-step-indicator" data-step="3">3</div>
+          <div class="wizard-line"></div>
+          <div class="wizard-step-indicator" data-step="4">4</div>
+          <div class="wizard-line"></div>
+          <div class="wizard-step-indicator" data-step="5">5</div>
+          <div class="wizard-line"></div>
+          <div class="wizard-step-indicator" data-step="6">6</div>
+        </div>
+
+        <!-- Step 1: Welcome -->
+        <div class="wizard-step active" data-step="1">
+          <div class="auth-logo">📄</div>
+          <h2 class="auth-title">Willkommen!</h2>
+          <p class="auth-subtitle">Lass uns deine Rechnungsapp einrichten – das dauert ca. 5 Minuten.</p>
+          <div class="wizard-info">
+            <p style="margin-bottom:12px;"><strong>Was du brauchst:</strong></p>
+            <ul style="text-align:left;list-style:none;padding:0;">
+              <li style="padding:6px 0;">✓ Ein Google-Konto</li>
+              <li style="padding:6px 0;">✓ 5 Minuten Zeit</li>
+              <li style="padding:6px 0;">✓ Einen Browser</li>
+            </ul>
+            <p style="margin-top:14px;color:var(--text-secondary);font-size:13px;">
+              Wir nutzen <strong>Firebase</strong> (von Google) – kostenlos für deinen Bedarf.
+              Damit wird deine App auf Desktop und Handy synchronisiert und sicher gespeichert.
+            </p>
+          </div>
+          <button class="btn btn-primary auth-btn" onclick="wizardNext()">Los geht's →</button>
+        </div>
+
+        <!-- Step 2: Firebase Projekt erstellen -->
+        <div class="wizard-step" data-step="2">
+          <h2 class="auth-title">Firebase-Projekt erstellen</h2>
+          <p class="auth-subtitle">Schritt 1 von 5</p>
+          <div class="wizard-info">
+            <ol style="text-align:left;padding-left:20px;line-height:1.8;">
+              <li>Öffne die <a href="https://console.firebase.google.com" target="_blank" style="color:var(--accent);font-weight:600;">Firebase Console</a></li>
+              <li>Klicke auf <strong>"Projekt hinzufügen"</strong> (Add project)</li>
+              <li>Gib einen Namen ein (z.B. "Rechnungsapp")</li>
+              <li>Google Analytics: kannst du <strong>deaktivieren</strong> (nicht nötig)</li>
+              <li>Klicke <strong>"Projekt erstellen"</strong> und warte 30 Sekunden</li>
+            </ol>
+          </div>
+          <div class="wizard-actions">
+            <button class="btn" onclick="wizardBack()">← Zurück</button>
+            <button class="btn btn-primary" onclick="wizardNext()">Weiter →</button>
+          </div>
+        </div>
+
+        <!-- Step 3: Firestore -->
+        <div class="wizard-step" data-step="3">
+          <h2 class="auth-title">Datenbank aktivieren</h2>
+          <p class="auth-subtitle">Schritt 2 von 5 – Firestore</p>
+          <div class="wizard-info">
+            <ol style="text-align:left;padding-left:20px;line-height:1.8;">
+              <li>Im linken Menü: <strong>Build → Firestore Database</strong></li>
+              <li>Klicke <strong>"Datenbank erstellen"</strong> (Create database)</li>
+              <li>Standort wählen: <code>europe-west3</code> (Frankfurt)</li>
+              <li>Modus: <strong>"Im Testmodus starten"</strong> (Test mode)</li>
+              <li>Klicke <strong>"Aktivieren"</strong></li>
+            </ol>
+            <p style="margin-top:12px;font-size:12px;color:var(--text-tertiary);">
+              💡 Testmodus reicht für 30 Tage. Danach kannst du die Regeln anpassen.
+            </p>
+          </div>
+          <div class="wizard-actions">
+            <button class="btn" onclick="wizardBack()">← Zurück</button>
+            <button class="btn btn-primary" onclick="wizardNext()">Weiter →</button>
+          </div>
+        </div>
+
+        <!-- Step 4: Authentication -->
+        <div class="wizard-step" data-step="4">
+          <h2 class="auth-title">Login aktivieren</h2>
+          <p class="auth-subtitle">Schritt 3 von 5 – Authentication</p>
+          <div class="wizard-info">
+            <ol style="text-align:left;padding-left:20px;line-height:1.8;">
+              <li>Im linken Menü: <strong>Build → Authentication</strong></li>
+              <li>Klicke <strong>"Jetzt starten"</strong> (Get started)</li>
+              <li>Tab <strong>"Sign-in method"</strong> öffnen</li>
+              <li>Klicke <strong>"E-Mail/Passwort"</strong></li>
+              <li>Aktiviere den Schalter ganz oben → <strong>Speichern</strong></li>
+            </ol>
+            <p style="margin-top:12px;font-size:12px;color:var(--text-tertiary);">
+              ⚠️ Wichtig! Ohne diesen Schritt funktioniert der Login nicht.
+            </p>
+          </div>
+          <div class="wizard-actions">
+            <button class="btn" onclick="wizardBack()">← Zurück</button>
+            <button class="btn btn-primary" onclick="wizardNext()">Weiter →</button>
+          </div>
+        </div>
+
+        <!-- Step 5: Web App + Config holen -->
+        <div class="wizard-step" data-step="5">
+          <h2 class="auth-title">Web-App registrieren</h2>
+          <p class="auth-subtitle">Schritt 4 von 5 – Config holen</p>
+          <div class="wizard-info">
+            <ol style="text-align:left;padding-left:20px;line-height:1.8;">
+              <li>Klicke das <strong>⚙️ Zahnrad</strong> (oben links) → <strong>"Projekteinstellungen"</strong></li>
+              <li>Scrolle zu <strong>"Meine Apps"</strong></li>
+              <li>Klicke das <strong>&lt;/&gt; Web-Icon</strong></li>
+              <li>App-Name: z.B. "Rechnungsapp" → <strong>"App registrieren"</strong></li>
+              <li>Du siehst jetzt <code>firebaseConfig</code> mit Werten – die brauchen wir gleich!</li>
+            </ol>
+          </div>
+          <div class="wizard-actions">
+            <button class="btn" onclick="wizardBack()">← Zurück</button>
+            <button class="btn btn-primary" onclick="wizardNext()">Weiter →</button>
+          </div>
+        </div>
+
+        <!-- Step 6: Config eingeben -->
+        <div class="wizard-step" data-step="6">
+          <h2 class="auth-title">Config einfügen</h2>
+          <p class="auth-subtitle">Schritt 5 von 5 – Letzter Schritt!</p>
+          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:18px;">
+            Kopiere die Werte aus <code>firebaseConfig</code> hier rein:
+          </p>
+          <div style="text-align:left;display:flex;flex-direction:column;gap:10px;">
+            <input type="text" id="wiz-fb-apiKey" placeholder="apiKey" class="auth-input">
+            <input type="text" id="wiz-fb-authDomain" placeholder="authDomain" class="auth-input">
+            <input type="text" id="wiz-fb-projectId" placeholder="projectId" class="auth-input">
+            <input type="text" id="wiz-fb-storageBucket" placeholder="storageBucket" class="auth-input">
+            <input type="text" id="wiz-fb-messagingSenderId" placeholder="messagingSenderId" class="auth-input">
+            <input type="text" id="wiz-fb-appId" placeholder="appId" class="auth-input">
+          </div>
+          <div class="auth-error" id="wiz-error"></div>
+          <div class="wizard-actions">
+            <button class="btn" onclick="wizardBack()">← Zurück</button>
+            <button class="btn btn-primary" onclick="wizardFinish()">Verbinden & weiter →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Login Form -->
+      <div id="auth-login-form" style="display:none;">
+        <div class="auth-logo">📄</div>
+        <h2 class="auth-title">Willkommen zurück</h2>
+        <p class="auth-subtitle">Melde dich an, um fortzufahren</p>
+        <div class="auth-field">
+          <input type="email" id="auth-email" placeholder="E-Mail" autocomplete="email" onkeydown="if(event.key==='Enter')document.getElementById('auth-password').focus()">
+        </div>
+        <div class="auth-field">
+          <input type="password" id="auth-password" placeholder="Passwort" autocomplete="current-password" onkeydown="if(event.key==='Enter')authLogin()">
+        </div>
+        <div class="auth-error" id="auth-error"></div>
+        <button class="btn btn-primary auth-btn" onclick="authLogin()">Anmelden</button>
+        <p class="auth-switch"><a href="#" onclick="authForgotPassword()">Passwort vergessen?</a></p>
+        <p class="auth-switch">Noch kein Konto? <a href="#" onclick="showAuthRegister()">Registrieren</a></p>
+      </div>
+
+      <!-- Register Form -->
+      <div id="auth-register-form" style="display:none;">
+        <div class="auth-logo">📄</div>
+        <h2 class="auth-title">Konto erstellen</h2>
+        <p class="auth-subtitle">Erstelle dein Konto, um zu starten</p>
+        <div class="auth-field">
+          <input type="email" id="auth-reg-email" placeholder="E-Mail" autocomplete="email" onkeydown="if(event.key==='Enter')document.getElementById('auth-reg-password').focus()">
+        </div>
+        <div class="auth-field">
+          <input type="password" id="auth-reg-password" placeholder="Passwort (min. 6 Zeichen)" autocomplete="new-password" onkeydown="if(event.key==='Enter')document.getElementById('auth-reg-password2').focus()">
+        </div>
+        <div class="auth-field">
+          <input type="password" id="auth-reg-password2" placeholder="Passwort wiederholen" autocomplete="new-password" onkeydown="if(event.key==='Enter')authRegister()">
+        </div>
+        <div class="auth-error" id="auth-reg-error"></div>
+        <button class="btn btn-primary auth-btn" onclick="authRegister()">Konto erstellen</button>
+        <p class="auth-switch">Bereits ein Konto? <a href="#" onclick="showAuthLogin()">Anmelden</a></p>
+      </div>
     </div>
   </div>
 
@@ -108,11 +281,11 @@
         <div class="form" id="invoice-form-wrapper">
           <input type="hidden" id="invoice-edit-id">
           <div class="form-row">
-            <div class="form-group">
+            <div class="form-group" style="position:relative;">
               <label>Kunde</label>
-              <select id="invoice-customer">
-                <option value="">-- Kunde auswählen --</option>
-              </select>
+              <input type="text" id="invoice-customer-search" placeholder="Kunde suchen..." autocomplete="off" oninput="filterCustomerDropdown()" onfocus="showCustomerDropdown()">
+              <input type="hidden" id="invoice-customer">
+              <div id="customer-dropdown" class="customer-dropdown" style="display:none;"></div>
             </div>
             <div class="form-group">
               <label>Rechnungsdatum</label>
@@ -184,8 +357,7 @@
           </div>
 
           <div class="form-actions">
-            <button type="button" class="btn btn-primary" onclick="saveInvoice()">Rechnung speichern</button>
-            <button type="button" class="btn" onclick="saveInvoiceAndPDF()">Speichern & PDF exportieren</button>
+            <button type="button" class="btn btn-primary" id="save-invoice-btn" onclick="saveInvoice()">Rechnung erstellen</button>
             <button type="button" class="btn btn-ghost" onclick="resetInvoiceForm()">Abbrechen</button>
           </div>
         </div>
@@ -430,19 +602,9 @@
           <div id="saved-items-list"></div>
           <button type="button" class="btn btn-small" onclick="addSavedItem()" style="margin-top:8px;">+ Neue Position speichern</button>
 
-          <h3>Passwortschutz</h3>
-          <div class="form-row">
-            <div class="form-group">
-              <label id="password-status-label">Passwort: nicht gesetzt</label>
-              <input type="password" id="settings-password" placeholder="Neues Passwort setzen...">
-            </div>
-            <div class="form-group">
-              <label>&nbsp;</label>
-              <div style="display:flex;gap:8px;">
-                <button type="button" class="btn btn-small" onclick="setAppPassword()">Setzen</button>
-                <button type="button" class="btn btn-small btn-danger" onclick="removeAppPassword()">Entfernen</button>
-              </div>
-            </div>
+          <h3>Konto</h3>
+          <div class="form-group">
+            <button type="button" class="btn btn-danger" onclick="authLogout()">Abmelden</button>
           </div>
 
           <div class="form-actions">
@@ -475,6 +637,7 @@
   <script src="../node_modules/pdf-lib/dist/pdf-lib.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="store.js"></script>
   <script src="pdf-generator.js"></script>

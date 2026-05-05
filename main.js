@@ -361,19 +361,49 @@ ipcMain.handle('savedItems:save', (_event, items) => {
   return true;
 });
 
-// Password
+// Auth (Login/Register)
+ipcMain.handle('auth:getData', () => {
+  const filePath = path.join(getDataPath(), 'auth.json');
+  return readJSON(filePath);
+});
+
+ipcMain.handle('auth:setData', (_event, data) => {
+  const filePath = path.join(getDataPath(), 'auth.json');
+  if (data) {
+    writeJSON(filePath, data);
+  } else {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
+  return true;
+});
+
+ipcMain.handle('session:get', () => {
+  const filePath = path.join(getDataPath(), 'session.json');
+  return readJSON(filePath);
+});
+
+ipcMain.handle('session:set', (_event, data) => {
+  const filePath = path.join(getDataPath(), 'session.json');
+  if (data) {
+    writeJSON(filePath, data);
+  } else {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
+  return true;
+});
+
+// Password (legacy - keep for compatibility)
 ipcMain.handle('password:get', () => {
   const filePath = path.join(getDataPath(), 'auth.json');
   const data = readJSON(filePath);
-  return data ? data.hash : null;
+  return data ? data.passwordHash || data.hash : null;
 });
 
 ipcMain.handle('password:set', (_event, hash) => {
   const filePath = path.join(getDataPath(), 'auth.json');
   if (hash) {
-    writeJSON(filePath, { hash });
+    writeJSON(filePath, { passwordHash: hash });
   } else {
-    // Passwort entfernen
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   }
   return true;

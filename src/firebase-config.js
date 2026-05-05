@@ -1,5 +1,6 @@
 // Firebase Konfiguration - wird vom Benutzer selbst eingetragen
 let db = null;
+let auth = null;
 let firebaseReady = false;
 
 function initFirebase(config) {
@@ -10,6 +11,9 @@ function initFirebase(config) {
     }
     firebase.initializeApp(config);
     db = firebase.firestore();
+    auth = firebase.auth();
+    // "Angemeldet bleiben" über Firebase persistence
+    auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(e => console.warn('Persistence error:', e));
     firebaseReady = true;
     console.log('Firebase verbunden:', config.projectId);
     return true;
@@ -17,6 +21,7 @@ function initFirebase(config) {
     console.error('Firebase Init Fehler:', e);
     firebaseReady = false;
     db = null;
+    auth = null;
     return false;
   }
 }

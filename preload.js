@@ -36,7 +36,13 @@ contextBridge.exposeInMainWorld('api', {
   getSavedItems: () => ipcRenderer.invoke('savedItems:getAll'),
   saveSavedItems: (items) => ipcRenderer.invoke('savedItems:save', items),
 
-  // Password
+  // Auth
+  getAuthData: () => ipcRenderer.invoke('auth:getData'),
+  setAuthData: (data) => ipcRenderer.invoke('auth:setData', data),
+  getSession: () => ipcRenderer.invoke('session:get'),
+  setSession: (data) => ipcRenderer.invoke('session:set', data),
+
+  // Password (legacy)
   getPasswordHash: () => ipcRenderer.invoke('password:get'),
   setPasswordHash: (hash) => ipcRenderer.invoke('password:set', hash),
 

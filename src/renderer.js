@@ -20,15 +20,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (ok) store.useFirebase = true;
   }
 
-  // Passwortschutz prüfen
-  const hasPassword = await window.api.getPasswordHash();
-  if (hasPassword) {
-    document.getElementById('password-overlay').style.display = 'flex';
-    document.getElementById('password-input').focus();
+  // Auth-Flow:
+  // 1. Keine Firebase Config → Setup-Wizard
+  // 2. Firebase Config aber nicht eingeloggt → Login-Screen
+  // 3. Eingeloggt → App
+  if (!fbConfig) {
+    document.getElementById('auth-overlay').style.display = 'flex';
+    showSetupWizard();
     return;
   }
 
-  await initApp();
+  // Firebase Auth State prüfen
+  if (typeof auth !== 'undefined' && auth) {
+    auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        // Eingeloggt
+        document.getElementById('auth-overlay').style.display = 'none';
+        await initApp();
+      } else {
+        // Nicht eingeloggt → Login zeigen
+        document.getElementById('auth-overlay').style.display = 'flex';
+        showAuthLogin();
+      }
+    });
+  } else {
+    // Firebase nicht initialisiert
+    document.getElementById('auth-overlay').style.display = 'flex';
+    showSetupWizard();
+  }
+  return;
 });
 
 async function initApp() {
@@ -63,7 +83,6 @@ async function initApp() {
   renderSettingsForm();
   updateInvoiceForm();
   updateNumberPreview();
-  updatePasswordStatus();
 }
 
 async function syncToFirebase() {
@@ -270,7 +289,10 @@ function editInvoice(id) {
   editingInvoiceId = id;
   document.getElementById('invoice-edit-id').value = id;
   document.getElementById('invoice-form-title').textContent = `Rechnung ${inv.number} bearbeiten`;
+  document.getElementById('save-invoice-btn').textContent = 'Änderungen speichern';
   document.getElementById('invoice-customer').value = inv.customerId || '';
+  const editCustomerObj = store.getCustomer(inv.customerId);
+  document.getElementById('invoice-customer-search').value = editCustomerObj ? editCustomerObj.name : '';
   document.getElementById('invoice-date').value = inv.date || '';
   document.getElementById('invoice-due-days').value = inv.dueDays || 14;
   document.getElementById('invoice-notes').value = inv.notes || '';
@@ -308,17 +330,14 @@ function updateInvoiceForm() {
     if (mwstRow) mwstRow.style.display = '';
   }
 
-  // Populate customer dropdown
-  const select = document.getElementById('invoice-customer');
-  const currentVal = select.value;
-  select.innerHTML = '<option value="">-- Kunde auswählen --</option>';
-  store.customers.forEach((c) => {
-    const opt = document.createElement('option');
-    opt.value = c.id;
-    opt.textContent = c.name;
-    select.appendChild(opt);
-  });
-  select.value = currentVal;
+  // Kunden-Suche aktualisieren (verstecktes Feld bleibt)
+  const currentCustomerId = document.getElementById('invoice-customer').value;
+  if (currentCustomerId) {
+    const cust = store.getCustomer(currentCustomerId);
+    if (cust) {
+      document.getElementById('invoice-customer-search').value = cust.name;
+    }
+  }
 
   // Set default date
   if (!document.getElementById('invoice-date').value) {
@@ -425,7 +444,9 @@ function resetInvoiceForm() {
   editingInvoiceId = null;
   document.getElementById('invoice-edit-id').value = '';
   document.getElementById('invoice-form-title').textContent = 'Neue Rechnung';
+  document.getElementById('save-invoice-btn').textContent = 'Rechnung erstellen';
   document.getElementById('invoice-customer').value = '';
+  document.getElementById('invoice-customer-search').value = '';
   document.getElementById('invoice-date').value = new Date()
     .toISOString()
     .split('T')[0];
@@ -499,29 +520,52 @@ async function saveInvoice() {
   return invoice;
 }
 
-async function saveInvoiceAndPDF() {
-  const data = collectInvoiceData();
-
-  if (!data.customerId) {
-    showToast('Bitte einen Kunden auswählen', 'error');
-    return;
-  }
-  if (data.items.length === 0 || data.items.every(i => !i.description.trim())) {
-    showToast('Bitte mindestens eine Position hinzufügen', 'error');
-    return;
-  }
-
-  let invoice;
-  if (editingInvoiceId) {
-    invoice = await store.updateInvoice(editingInvoiceId, data);
-  } else {
-    invoice = await store.addInvoice(data);
-  }
-
-  await exportInvoicePDF(invoice.id);
-  resetInvoiceForm();
-  renderDashboard();
+// --- Customer Search Dropdown ---
+function showCustomerDropdown() {
+  filterCustomerDropdown();
 }
+
+function filterCustomerDropdown() {
+  const input = document.getElementById('invoice-customer-search');
+  const dropdown = document.getElementById('customer-dropdown');
+  const query = input.value.toLowerCase().trim();
+
+  const filtered = store.customers.filter(c =>
+    c.name.toLowerCase().includes(query) ||
+    (c.city || '').toLowerCase().includes(query) ||
+    (c.email || '').toLowerCase().includes(query)
+  );
+
+  if (filtered.length === 0) {
+    dropdown.style.display = 'none';
+    return;
+  }
+
+  dropdown.style.display = 'block';
+  dropdown.innerHTML = filtered.map(c => `
+    <div class="customer-dropdown-item" onclick="selectCustomer('${c.id}')">
+      <div><strong>${escapeHtml(c.name)}</strong></div>
+      ${c.city ? `<div class="customer-detail">${escapeHtml(c.street || '')} ${escapeHtml(c.zip || '')} ${escapeHtml(c.city)}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function selectCustomer(id) {
+  const customer = store.getCustomer(id);
+  if (!customer) return;
+  document.getElementById('invoice-customer').value = id;
+  document.getElementById('invoice-customer-search').value = customer.name;
+  document.getElementById('customer-dropdown').style.display = 'none';
+}
+
+// Dropdown schließen bei Klick außerhalb
+document.addEventListener('mousedown', (e) => {
+  const dropdown = document.getElementById('customer-dropdown');
+  const search = document.getElementById('invoice-customer-search');
+  if (dropdown && !dropdown.contains(e.target) && e.target !== search) {
+    dropdown.style.display = 'none';
+  }
+});
 
 async function exportInvoicePDF(invoiceId, skipDialog = false) {
   const inv = store.getInvoice(invoiceId);
@@ -634,7 +678,7 @@ function editCustomer(id) {
 
 async function deleteCustomer(id) {
   if (!confirm('Kunden wirklich löschen?')) return;
-  store.deleteCustomer(id);
+  await store.deleteCustomer(id);
   renderCustomersList();
   showToast('Kunde gelöscht');
 }
@@ -656,10 +700,10 @@ async function saveCustomer() {
   }
 
   if (editId) {
-    store.updateCustomer(editId, data);
+    await store.updateCustomer(editId, data);
     showToast('Kunde aktualisiert', 'success');
   } else {
-    store.addCustomer(data);
+    await store.addCustomer(data);
     showToast('Kunde angelegt', 'success');
   }
 
@@ -699,7 +743,6 @@ async function renderSettingsForm() {
   await renderLogoPreview();
   updateNumberPreview();
   renderSavedItemsList();
-  updatePasswordStatus();
   renderFirebaseStatus();
 }
 
@@ -779,55 +822,193 @@ async function saveSettingsForm() {
 }
 
 // ==========================
-// PASSWORD
+// SETUP WIZARD
 // ==========================
-async function simpleHash(str) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+let wizardCurrentStep = 1;
+const WIZARD_TOTAL_STEPS = 6;
+
+function showSetupWizard() {
+  document.getElementById('setup-wizard').style.display = 'block';
+  document.getElementById('auth-login-form').style.display = 'none';
+  document.getElementById('auth-register-form').style.display = 'none';
+  wizardCurrentStep = 1;
+  updateWizardUI();
 }
 
-async function checkPassword() {
-  const input = document.getElementById('password-input').value;
-  const storedHash = await window.api.getPasswordHash();
-  const inputHash = await simpleHash(input);
+function updateWizardUI() {
+  // Steps anzeigen/verstecken
+  document.querySelectorAll('.wizard-step').forEach(s => {
+    s.classList.toggle('active', parseInt(s.dataset.step) === wizardCurrentStep);
+  });
+  // Progress-Indikatoren
+  document.querySelectorAll('.wizard-step-indicator').forEach(ind => {
+    const step = parseInt(ind.dataset.step);
+    ind.classList.remove('active', 'completed');
+    if (step < wizardCurrentStep) ind.classList.add('completed');
+    else if (step === wizardCurrentStep) ind.classList.add('active');
+  });
+}
 
-  if (inputHash === storedHash) {
-    document.getElementById('password-overlay').style.display = 'none';
-    await initApp();
-  } else {
-    document.getElementById('password-error').style.display = 'block';
-    document.getElementById('password-input').value = '';
-    document.getElementById('password-input').focus();
+function wizardNext() {
+  if (wizardCurrentStep < WIZARD_TOTAL_STEPS) {
+    wizardCurrentStep++;
+    updateWizardUI();
   }
 }
 
-async function setAppPassword() {
-  const pw = document.getElementById('settings-password').value.trim();
-  if (!pw) {
-    showToast('Bitte ein Passwort eingeben', 'error');
+function wizardBack() {
+  if (wizardCurrentStep > 1) {
+    wizardCurrentStep--;
+    updateWizardUI();
+  }
+}
+
+async function wizardFinish() {
+  const config = {
+    apiKey: document.getElementById('wiz-fb-apiKey').value.trim(),
+    authDomain: document.getElementById('wiz-fb-authDomain').value.trim(),
+    projectId: document.getElementById('wiz-fb-projectId').value.trim(),
+    storageBucket: document.getElementById('wiz-fb-storageBucket').value.trim(),
+    messagingSenderId: document.getElementById('wiz-fb-messagingSenderId').value.trim(),
+    appId: document.getElementById('wiz-fb-appId').value.trim(),
+  };
+
+  if (!config.apiKey || !config.projectId || !config.authDomain) {
+    document.getElementById('wiz-error').textContent = 'Bitte mindestens API Key, Project ID und Auth Domain eingeben';
     return;
   }
-  const hash = await simpleHash(pw);
-  await window.api.setPasswordHash(hash);
-  document.getElementById('settings-password').value = '';
-  updatePasswordStatus();
-  showToast('Passwort gesetzt', 'success');
+
+  const success = initFirebase(config);
+  if (!success) {
+    document.getElementById('wiz-error').textContent = 'Firebase Verbindung fehlgeschlagen – bitte Daten prüfen';
+    return;
+  }
+
+  await window.api.saveFirebaseConfig(config);
+  store.useFirebase = true;
+
+  // Wizard ausblenden, Register zeigen
+  document.getElementById('setup-wizard').style.display = 'none';
+  showAuthRegister();
+  showToast('Firebase verbunden! Erstelle jetzt dein Konto.', 'success');
 }
 
-async function removeAppPassword() {
-  await window.api.setPasswordHash(null);
-  updatePasswordStatus();
-  showToast('Passwort entfernt', 'success');
+// ==========================
+// AUTH (Firebase Auth)
+// ==========================
+function showAuthLogin() {
+  document.getElementById('setup-wizard').style.display = 'none';
+  document.getElementById('auth-login-form').style.display = 'block';
+  document.getElementById('auth-register-form').style.display = 'none';
+  document.getElementById('auth-error').textContent = '';
+  setTimeout(() => document.getElementById('auth-email').focus(), 50);
 }
 
-async function updatePasswordStatus() {
-  const hash = await window.api.getPasswordHash();
-  const label = document.getElementById('password-status-label');
-  if (label) {
-    label.textContent = hash ? 'Passwort: ✅ aktiv' : 'Passwort: nicht gesetzt';
+function showAuthRegister() {
+  document.getElementById('setup-wizard').style.display = 'none';
+  document.getElementById('auth-login-form').style.display = 'none';
+  document.getElementById('auth-register-form').style.display = 'block';
+  document.getElementById('auth-reg-error').textContent = '';
+  setTimeout(() => document.getElementById('auth-reg-email').focus(), 50);
+}
+
+function firebaseAuthErrorMessage(err) {
+  const code = err.code || '';
+  if (code.includes('user-not-found')) return 'Kein Konto mit dieser E-Mail gefunden';
+  if (code.includes('wrong-password')) return 'Falsches Passwort';
+  if (code.includes('invalid-credential')) return 'E-Mail oder Passwort falsch';
+  if (code.includes('invalid-email')) return 'Ungültige E-Mail-Adresse';
+  if (code.includes('email-already-in-use')) return 'Diese E-Mail ist bereits registriert';
+  if (code.includes('weak-password')) return 'Passwort zu schwach (min. 6 Zeichen)';
+  if (code.includes('too-many-requests')) return 'Zu viele Versuche – bitte später erneut';
+  if (code.includes('network')) return 'Netzwerkfehler – Internet prüfen';
+  if (code.includes('operation-not-allowed')) return 'E-Mail/Passwort-Login nicht aktiviert – in Firebase Console unter Authentication → Sign-in method → Email/Password aktivieren';
+  if (code.includes('configuration-not-found')) return 'Authentication nicht eingerichtet – gehe in die Firebase Console → Authentication → „Jetzt starten" klicken → Email/Password aktivieren';
+  return err.message || 'Unbekannter Fehler';
+}
+
+async function authLogin() {
+  const email = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+
+  if (!email || !password) {
+    document.getElementById('auth-error').textContent = 'Bitte E-Mail und Passwort eingeben';
+    return;
+  }
+
+  if (typeof auth === 'undefined' || !auth) {
+    document.getElementById('auth-error').textContent = 'Firebase nicht verbunden';
+    return;
+  }
+
+  try {
+    await auth.signInWithEmailAndPassword(email, password);
+    // onAuthStateChanged übernimmt den Rest
+    showToast('Erfolgreich angemeldet', 'success');
+  } catch (err) {
+    document.getElementById('auth-error').textContent = firebaseAuthErrorMessage(err);
+    document.getElementById('auth-password').value = '';
+  }
+}
+
+async function authRegister() {
+  const email = document.getElementById('auth-reg-email').value.trim();
+  const password = document.getElementById('auth-reg-password').value;
+  const password2 = document.getElementById('auth-reg-password2').value;
+
+  if (!email || !password) {
+    document.getElementById('auth-reg-error').textContent = 'Bitte alle Felder ausfüllen';
+    return;
+  }
+  if (password.length < 6) {
+    document.getElementById('auth-reg-error').textContent = 'Passwort muss mindestens 6 Zeichen haben';
+    return;
+  }
+  if (password !== password2) {
+    document.getElementById('auth-reg-error').textContent = 'Passwörter stimmen nicht überein';
+    return;
+  }
+
+  if (typeof auth === 'undefined' || !auth) {
+    document.getElementById('auth-reg-error').textContent = 'Firebase nicht verbunden – bitte Setup durchführen';
+    return;
+  }
+
+  try {
+    await auth.createUserWithEmailAndPassword(email, password);
+    showToast(`Willkommen, ${email}!`, 'success');
+    // onAuthStateChanged übernimmt den Rest
+  } catch (err) {
+    document.getElementById('auth-reg-error').textContent = firebaseAuthErrorMessage(err);
+  }
+}
+
+async function authLogout() {
+  if (typeof auth !== 'undefined' && auth) {
+    await auth.signOut();
+  }
+  location.reload();
+}
+
+async function authForgotPassword() {
+  const email = document.getElementById('auth-email').value.trim();
+  if (!email) {
+    document.getElementById('auth-error').textContent = 'Bitte E-Mail eingeben, dann auf "Passwort vergessen" klicken';
+    document.getElementById('auth-email').focus();
+    return;
+  }
+
+  if (typeof auth === 'undefined' || !auth) {
+    document.getElementById('auth-error').textContent = 'Firebase nicht verbunden';
+    return;
+  }
+
+  try {
+    await auth.sendPasswordResetEmail(email);
+    document.getElementById('auth-error').textContent = '';
+    alert(`Eine E-Mail zum Zurücksetzen des Passworts wurde an ${email} gesendet. Prüfe auch den Spam-Ordner!`);
+  } catch (err) {
+    document.getElementById('auth-error').textContent = firebaseAuthErrorMessage(err);
   }
 }
 
