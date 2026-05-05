@@ -1926,7 +1926,7 @@ function showTeamLink(teamId) {
   }));
 
   // URL bauen (GitHub Pages)
-  const baseUrl = 'https://malikk065.github.io/Rechnungsapp/docs/team.html';
+  const baseUrl = 'https://malikk065.github.io/Zakflow/docs/team.html';
   const url = `${baseUrl}?t=${teamId}&c=${encodedConfig}`;
 
   document.getElementById('team-link-url').value = url;
