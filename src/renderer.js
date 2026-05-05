@@ -55,6 +55,7 @@ async function initApp() {
   await store.loadSettings();
   await store.loadCustomers();
   await store.loadInvoices();
+  await store.loadExpenses();
   savedItems = await window.api.getSavedItems() || [];
 
   // Lokale Daten nach Firebase synchronisieren
@@ -69,6 +70,9 @@ async function initApp() {
     if (type === 'invoices') {
       renderDashboard();
     }
+    if (type === 'expenses') {
+      renderExpensesList();
+    }
     if (type === 'settings') {
       renderSettingsForm();
       updateInvoiceForm();
@@ -80,9 +84,12 @@ async function initApp() {
   setupForms();
   renderDashboard();
   renderCustomersList();
+  renderExpensesList();
+  await loadTeams();
   renderSettingsForm();
   updateInvoiceForm();
   updateNumberPreview();
+  initFinanceYearSelect();
 }
 
 async function syncToFirebase() {
@@ -127,6 +134,23 @@ async function syncToFirebase() {
       if (window.api) await window.api.saveInvoices(store.invoices);
     }
 
+    // Ausgaben hochladen
+    const fbExpenses = await db.collection('expenses').get();
+    if (fbExpenses.empty && store.expenses.length > 0) {
+      console.log('Sync: Lade', store.expenses.length, 'Ausgaben nach Firebase hoch...');
+      for (let i = 0; i < store.expenses.length; i += 400) {
+        const batch = db.batch();
+        const chunk = store.expenses.slice(i, i + 400);
+        for (const exp of chunk) {
+          batch.set(db.collection('expenses').doc(exp.id), exp);
+        }
+        await batch.commit();
+      }
+    } else if (!fbExpenses.empty && store.expenses.length === 0) {
+      store.expenses = fbExpenses.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (window.api) await window.api.saveExpenses(store.expenses);
+    }
+
     // Saved Items hochladen
     if (savedItems.length > 0) {
       await db.collection('app').doc('savedItems').set({ items: savedItems });
@@ -169,6 +193,8 @@ function switchTab(tabName) {
   // Refresh data when switching tabs
   if (tabName === 'dashboard') renderDashboard();
   if (tabName === 'customers') renderCustomersList();
+  if (tabName === 'expenses') renderExpensesList();
+  if (tabName === 'finances') { initFinanceYearSelect(); renderFinances(); }
   if (tabName === 'new-invoice') updateInvoiceForm();
 }
 
@@ -477,6 +503,18 @@ function setupForms() {
   document.getElementById('customer-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     await saveCustomer();
+  });
+
+  // Expense form
+  document.getElementById('expense-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await saveExpense();
+  });
+
+  // Team form
+  document.getElementById('team-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await saveTeam();
   });
 
   // Settings form
@@ -1547,6 +1585,717 @@ async function confirmImport() {
   }
 
   closeImportModal();
+}
+
+// ==========================
+// EXPENSES (Ausgaben)
+// ==========================
+const EXPENSE_CATEGORIES = {
+  material: { label: 'Material & Waren', icon: '📦' },
+  buero: { label: 'Büro & Ausstattung', icon: '🖨️' },
+  software: { label: 'Software & Lizenzen', icon: '💻' },
+  fahrt: { label: 'Fahrtkosten', icon: '🚗' },
+  versicherung: { label: 'Versicherungen', icon: '🛡️' },
+  telefon: { label: 'Telefon & Internet', icon: '📱' },
+  werbung: { label: 'Werbung & Marketing', icon: '📣' },
+  beratung: { label: 'Beratung & Buchhaltung', icon: '📋' },
+  miete: { label: 'Miete & Nebenkosten', icon: '🏠' },
+  sonstiges: { label: 'Sonstiges', icon: '📎' },
+};
+
+function renderExpensesList() {
+  const tbody = document.getElementById('expenses-tbody');
+  const empty = document.getElementById('expenses-empty');
+  const table = document.getElementById('expenses-table');
+  const catFilter = document.getElementById('filter-expense-category').value;
+  const teamFilter = document.getElementById('filter-expense-team').value;
+
+  let expenses = [...store.expenses];
+  if (catFilter) {
+    expenses = expenses.filter(e => e.category === catFilter);
+  }
+  if (teamFilter === '_none') {
+    expenses = expenses.filter(e => !e.teamId);
+  } else if (teamFilter) {
+    expenses = expenses.filter(e => e.teamId === teamFilter);
+  }
+
+  // Stats
+  const now = new Date();
+  const thisMonth = store.expenses.filter(e => {
+    const d = new Date(e.date);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  });
+  const thisYear = store.expenses.filter(e => new Date(e.date).getFullYear() === now.getFullYear());
+
+  document.getElementById('stat-expenses-month').textContent = formatCurrency(thisMonth.reduce((s, e) => s + (e.amount || 0), 0));
+  document.getElementById('stat-expenses-year').textContent = formatCurrency(thisYear.reduce((s, e) => s + (e.amount || 0), 0));
+  document.getElementById('stat-expenses-count').textContent = store.expenses.length;
+
+  if (expenses.length === 0) {
+    table.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+
+  table.style.display = '';
+  empty.style.display = 'none';
+
+  const sorted = expenses.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  tbody.innerHTML = sorted.map(exp => {
+    const cat = EXPENSE_CATEGORIES[exp.category] || EXPENSE_CATEGORIES.sonstiges;
+    const teamName = exp.teamId ? (teams.find(t => t.id === exp.teamId) || {}).name : '';
+    const submitter = exp.submittedBy ? `<span class="badge" style="background:var(--accent-subtle);color:var(--accent);font-size:10px;padding:2px 8px;margin-left:6px;">${escapeHtml(exp.submittedBy)}</span>` : '';
+    const teamBadge = teamName ? `<span class="badge" style="background:var(--warning-subtle);color:var(--warning);font-size:10px;padding:2px 8px;margin-left:4px;">${escapeHtml(teamName)}</span>` : '';
+    return `<tr>
+      <td>${formatDate(exp.date)}</td>
+      <td><strong>${escapeHtml(exp.description)}</strong>${submitter}${teamBadge}${exp.notes && !exp.submittedBy ? `<br><small style="color:var(--text-tertiary)">${escapeHtml(exp.notes)}</small>` : ''}</td>
+      <td><span style="display:inline-flex;align-items:center;gap:4px;">${cat.icon} ${cat.label}</span></td>
+      <td><strong>${formatCurrency(exp.amount)}</strong></td>
+      <td>
+        <button class="btn-icon" onclick="editExpense('${exp.id}')" title="Bearbeiten">&#9998;</button>
+        <button class="btn-icon" onclick="deleteExpense('${exp.id}')" title="Löschen">&#128465;</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function showExpenseForm(expense = null) {
+  const modal = document.getElementById('expense-modal');
+  const title = document.getElementById('expense-modal-title');
+
+  if (expense) {
+    title.textContent = 'Ausgabe bearbeiten';
+    document.getElementById('expense-edit-id').value = expense.id;
+    document.getElementById('expense-date').value = expense.date || '';
+    document.getElementById('expense-amount').value = expense.amount || '';
+    document.getElementById('expense-description').value = expense.description || '';
+    document.getElementById('expense-category').value = expense.category || 'sonstiges';
+    document.getElementById('expense-tax').value = expense.taxRate != null ? expense.taxRate : 19;
+    document.getElementById('expense-notes').value = expense.notes || '';
+  } else {
+    title.textContent = 'Neue Ausgabe';
+    document.getElementById('expense-edit-id').value = '';
+    document.getElementById('expense-form').reset();
+    document.getElementById('expense-date').value = new Date().toISOString().split('T')[0];
+  }
+
+  modal.classList.add('active');
+}
+
+function closeExpenseModal() {
+  document.getElementById('expense-modal').classList.remove('active');
+}
+
+function editExpense(id) {
+  const expense = store.getExpense(id);
+  if (expense) showExpenseForm(expense);
+}
+
+async function deleteExpense(id) {
+  if (!confirm('Ausgabe wirklich löschen?')) return;
+  await store.deleteExpense(id);
+  renderExpensesList();
+  showToast('Ausgabe gelöscht');
+}
+
+async function saveExpense() {
+  const editId = document.getElementById('expense-edit-id').value;
+  const data = {
+    date: document.getElementById('expense-date').value,
+    amount: parseFloat(document.getElementById('expense-amount').value) || 0,
+    description: document.getElementById('expense-description').value.trim(),
+    category: document.getElementById('expense-category').value,
+    taxRate: parseInt(document.getElementById('expense-tax').value),
+    notes: document.getElementById('expense-notes').value.trim(),
+  };
+
+  if (!data.description || !data.amount) {
+    showToast('Bitte Beschreibung und Betrag eingeben', 'error');
+    return;
+  }
+
+  if (editId) {
+    await store.updateExpense(editId, data);
+    showToast('Ausgabe aktualisiert', 'success');
+  } else {
+    await store.addExpense(data);
+    showToast('Ausgabe erfasst', 'success');
+  }
+
+  closeExpenseModal();
+  renderExpensesList();
+}
+
+function filterExpenses() {
+  const query = document.getElementById('search-expenses').value.toLowerCase().trim();
+  const rows = document.querySelectorAll('#expenses-tbody tr');
+  rows.forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(query) ? '' : 'none';
+  });
+}
+
+// ==========================
+// TEAMS
+// ==========================
+let teams = [];
+
+async function loadTeams() {
+  if (store.useFirebase && db) {
+    try {
+      const snapshot = await db.collection('teams').get();
+      teams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (e) { console.warn('Teams load failed:', e); }
+  }
+  renderTeamsList();
+  updateTeamFilter();
+}
+
+function renderTeamsList() {
+  const container = document.getElementById('teams-list');
+  if (!container) return;
+
+  if (teams.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-tertiary);font-size:13px;padding:8px 0;">Noch keine Teams erstellt.</p>';
+    return;
+  }
+
+  container.innerHTML = teams.map(team => {
+    const teamExpenses = store.expenses.filter(e => e.teamId === team.id);
+    const totalAmount = teamExpenses.reduce((s, e) => s + (e.amount || 0), 0);
+    return `
+      <div class="top-customer-row">
+        <span style="font-size:20px;">👥</span>
+        <div class="top-customer-info">
+          <div class="top-customer-name">${escapeHtml(team.name)}</div>
+          <div class="top-customer-count">${teamExpenses.length} Ausgabe${teamExpenses.length !== 1 ? 'n' : ''}</div>
+        </div>
+        <span class="top-customer-amount">${formatCurrency(totalAmount)}</span>
+        <button class="btn btn-small" onclick="showTeamLink('${team.id}')" title="Link teilen">🔗 Link</button>
+        <button class="btn-icon" onclick="deleteTeam('${team.id}')" title="Löschen">🗑️</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function updateTeamFilter() {
+  const select = document.getElementById('filter-expense-team');
+  if (!select) return;
+  // Keep first two options (Alle Teams, Ohne Team), add team options
+  const existing = select.querySelectorAll('option[data-team]');
+  existing.forEach(o => o.remove());
+  teams.forEach(team => {
+    const opt = document.createElement('option');
+    opt.value = team.id;
+    opt.textContent = team.name;
+    opt.dataset.team = '1';
+    select.appendChild(opt);
+  });
+}
+
+function showTeamForm() {
+  if (!store.useFirebase || !db) {
+    showToast('Firebase muss verbunden sein für Teams', 'error');
+    return;
+  }
+  document.getElementById('team-modal').classList.add('active');
+  document.getElementById('team-edit-id').value = '';
+  document.getElementById('team-name').value = '';
+  document.getElementById('team-modal-title').textContent = 'Neues Team';
+}
+
+function closeTeamModal() {
+  document.getElementById('team-modal').classList.remove('active');
+}
+
+async function saveTeam() {
+  const name = document.getElementById('team-name').value.trim();
+  if (!name) {
+    showToast('Bitte einen Teamnamen eingeben', 'error');
+    return;
+  }
+
+  const team = {
+    name,
+    createdAt: new Date().toISOString(),
+  };
+
+  try {
+    const docRef = await db.collection('teams').add(team);
+    team.id = docRef.id;
+    teams.push(team);
+    renderTeamsList();
+    updateTeamFilter();
+    closeTeamModal();
+    showToast(`Team "${name}" erstellt`, 'success');
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
+function showTeamLink(teamId) {
+  const team = teams.find(t => t.id === teamId);
+  if (!team) return;
+
+  // Firebase Config für den Link kodieren
+  const config = firebase.app().options;
+  const encodedConfig = btoa(JSON.stringify({
+    apiKey: config.apiKey,
+    authDomain: config.authDomain,
+    projectId: config.projectId,
+    storageBucket: config.storageBucket,
+    messagingSenderId: config.messagingSenderId,
+    appId: config.appId,
+  }));
+
+  // URL bauen (GitHub Pages)
+  const baseUrl = 'https://malikk065.github.io/Rechnungsapp/docs/team.html';
+  const url = `${baseUrl}?t=${teamId}&c=${encodedConfig}`;
+
+  document.getElementById('team-link-url').value = url;
+  document.getElementById('team-link-modal').classList.add('active');
+}
+
+function closeTeamLinkModal() {
+  document.getElementById('team-link-modal').classList.remove('active');
+}
+
+function copyTeamLink() {
+  const input = document.getElementById('team-link-url');
+  input.select();
+  navigator.clipboard.writeText(input.value).then(() => {
+    showToast('Link kopiert!', 'success');
+  }).catch(() => {
+    // Fallback
+    document.execCommand('copy');
+    showToast('Link kopiert!', 'success');
+  });
+}
+
+async function deleteTeam(id) {
+  const team = teams.find(t => t.id === id);
+  if (!confirm(`Team "${team ? team.name : ''}" wirklich löschen? Die Ausgaben bleiben erhalten.`)) return;
+
+  try {
+    await db.collection('teams').doc(id).delete();
+    teams = teams.filter(t => t.id !== id);
+    renderTeamsList();
+    updateTeamFilter();
+    showToast('Team gelöscht');
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
+// ==========================
+// FINANCES (Finanzen-Tab)
+// ==========================
+function renderFinances() {
+  const yearSelect = document.getElementById('finance-year');
+  const selectedYear = parseInt(yearSelect.value) || new Date().getFullYear();
+
+  // Einnahmen (bezahlte Rechnungen im gewählten Jahr)
+  const yearInvoices = store.invoices.filter(inv => {
+    const d = new Date(inv.date);
+    return d.getFullYear() === selectedYear && inv.status === 'bezahlt' && inv.type !== 'gutschrift';
+  });
+
+  let totalRevenue = 0;
+  let totalMwstEinnahmen = 0;
+  yearInvoices.forEach(inv => {
+    const totals = store.calculateInvoiceTotal(inv);
+    totalRevenue += totals.netto;
+    totalMwstEinnahmen += totals.mwst;
+  });
+
+  // Ausgaben im gewählten Jahr
+  const yearExpenses = store.expenses.filter(e => new Date(e.date).getFullYear() === selectedYear);
+  let totalExpenses = 0;
+  let totalMwstAusgaben = 0;
+  yearExpenses.forEach(e => {
+    const netto = e.amount / (1 + (e.taxRate || 0) / 100);
+    totalExpenses += netto;
+    totalMwstAusgaben += e.amount - netto;
+  });
+
+  const profit = totalRevenue - totalExpenses;
+  const ustZahllast = totalMwstEinnahmen - totalMwstAusgaben;
+
+  document.getElementById('fin-revenue').textContent = formatCurrency(totalRevenue);
+  document.getElementById('fin-expenses').textContent = formatCurrency(totalExpenses);
+  document.getElementById('fin-profit').textContent = formatCurrency(profit);
+  document.getElementById('fin-profit').style.color = profit >= 0 ? 'var(--success)' : 'var(--danger)';
+  document.getElementById('fin-tax-estimate').textContent = formatCurrency(Math.max(0, ustZahllast));
+
+  // Monatliches Chart
+  renderRevenueChart(selectedYear);
+
+  // Überfällige Rechnungen
+  renderOverdueInvoices();
+
+  // Top-Kunden
+  renderTopCustomers(selectedYear);
+
+  // Ausgaben nach Kategorie
+  renderExpenseCategories(selectedYear);
+}
+
+function renderRevenueChart(year) {
+  const container = document.getElementById('revenue-chart');
+  const months = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+
+  const monthlyIncome = new Array(12).fill(0);
+  const monthlyExpense = new Array(12).fill(0);
+
+  store.invoices.forEach(inv => {
+    const d = new Date(inv.date);
+    if (d.getFullYear() === year && inv.status === 'bezahlt' && inv.type !== 'gutschrift') {
+      const totals = store.calculateInvoiceTotal(inv);
+      monthlyIncome[d.getMonth()] += totals.brutto;
+    }
+  });
+
+  store.expenses.forEach(e => {
+    const d = new Date(e.date);
+    if (d.getFullYear() === year) {
+      monthlyExpense[d.getMonth()] += e.amount;
+    }
+  });
+
+  const maxVal = Math.max(...monthlyIncome, ...monthlyExpense, 1);
+
+  let html = '';
+  for (let i = 0; i < 12; i++) {
+    const incPct = (monthlyIncome[i] / maxVal) * 100;
+    const expPct = (monthlyExpense[i] / maxVal) * 100;
+    html += `
+      <div class="chart-bar-row">
+        <span class="chart-label">${months[i]}</span>
+        <div class="chart-bar-wrap">
+          <div class="chart-bar income" style="width:${incPct}%"></div>
+        </div>
+        <div class="chart-bar-wrap" style="max-width:30%;">
+          <div class="chart-bar expense" style="width:${expPct > 0 ? Math.max(expPct, 3) : 0}%"></div>
+        </div>
+        <span class="chart-bar-value">${formatCurrency(monthlyIncome[i])}</span>
+      </div>
+    `;
+  }
+
+  html += `
+    <div class="chart-legend">
+      <div class="chart-legend-item"><span class="chart-legend-dot" style="background:var(--accent)"></span> Einnahmen</div>
+      <div class="chart-legend-item"><span class="chart-legend-dot" style="background:var(--danger)"></span> Ausgaben</div>
+    </div>
+  `;
+
+  container.innerHTML = html;
+}
+
+function renderOverdueInvoices() {
+  const tbody = document.getElementById('overdue-tbody');
+  const table = document.getElementById('overdue-table');
+  const empty = document.getElementById('overdue-empty');
+  const today = new Date();
+
+  const overdue = store.invoices.filter(inv => {
+    if (inv.status !== 'offen') return false;
+    const dueDate = new Date(inv.date);
+    dueDate.setDate(dueDate.getDate() + (inv.dueDays || 14));
+    return today > dueDate;
+  }).map(inv => {
+    const dueDate = new Date(inv.date);
+    dueDate.setDate(dueDate.getDate() + (inv.dueDays || 14));
+    const daysOverdue = Math.floor((today - dueDate) / (1000 * 60 * 60 * 24));
+    return { ...inv, dueDate, daysOverdue };
+  }).sort((a, b) => b.daysOverdue - a.daysOverdue);
+
+  if (overdue.length === 0) {
+    table.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+
+  table.style.display = '';
+  empty.style.display = 'none';
+
+  tbody.innerHTML = overdue.map(inv => {
+    const customer = store.getCustomer(inv.customerId);
+    const totals = store.calculateInvoiceTotal(inv);
+    return `<tr>
+      <td><strong>${inv.number}</strong></td>
+      <td>${customer ? escapeHtml(customer.name) : 'Unbekannt'}</td>
+      <td>${formatCurrency(totals.brutto)}</td>
+      <td>${formatDate(inv.dueDate.toISOString().split('T')[0])}</td>
+      <td><span class="overdue-days">${inv.daysOverdue} Tage</span></td>
+      <td>
+        <button class="btn btn-small btn-danger" onclick="toggleInvoiceStatus('${inv.id}');renderFinances();" title="Als bezahlt markieren">&#10003; Bezahlt</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderTopCustomers(year) {
+  const container = document.getElementById('top-customers-list');
+  const customerRevenue = {};
+
+  store.invoices.forEach(inv => {
+    const d = new Date(inv.date);
+    if (d.getFullYear() === year && inv.status === 'bezahlt' && inv.type !== 'gutschrift') {
+      const totals = store.calculateInvoiceTotal(inv);
+      if (!customerRevenue[inv.customerId]) {
+        customerRevenue[inv.customerId] = { total: 0, count: 0 };
+      }
+      customerRevenue[inv.customerId].total += totals.brutto;
+      customerRevenue[inv.customerId].count++;
+    }
+  });
+
+  const sorted = Object.entries(customerRevenue)
+    .map(([id, data]) => ({ id, ...data }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5);
+
+  if (sorted.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-tertiary);padding:16px;">Noch keine Daten vorhanden.</p>';
+    return;
+  }
+
+  container.innerHTML = sorted.map((item, i) => {
+    const customer = store.getCustomer(item.id);
+    return `
+      <div class="top-customer-row">
+        <span class="top-customer-rank">${i + 1}</span>
+        <div class="top-customer-info">
+          <div class="top-customer-name">${customer ? escapeHtml(customer.name) : 'Unbekannt'}</div>
+          <div class="top-customer-count">${item.count} Rechnung${item.count > 1 ? 'en' : ''}</div>
+        </div>
+        <span class="top-customer-amount">${formatCurrency(item.total)}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderExpenseCategories(year) {
+  const container = document.getElementById('expense-categories-chart');
+  const yearExpenses = store.expenses.filter(e => new Date(e.date).getFullYear() === year);
+
+  const categoryTotals = {};
+  yearExpenses.forEach(e => {
+    const cat = e.category || 'sonstiges';
+    categoryTotals[cat] = (categoryTotals[cat] || 0) + e.amount;
+  });
+
+  const total = Object.values(categoryTotals).reduce((s, v) => s + v, 0);
+  const sorted = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
+
+  if (sorted.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-tertiary);padding:16px;">Keine Ausgaben in diesem Jahr.</p>';
+    return;
+  }
+
+  const maxCat = sorted[0][1];
+  container.innerHTML = sorted.map(([cat, amount]) => {
+    const info = EXPENSE_CATEGORIES[cat] || EXPENSE_CATEGORIES.sonstiges;
+    const pct = total > 0 ? Math.round((amount / total) * 100) : 0;
+    const barPct = (amount / maxCat) * 100;
+    return `
+      <div class="category-row">
+        <span class="category-icon">${info.icon}</span>
+        <div class="category-info">
+          <div class="category-name">${info.label}</div>
+          <div class="category-bar"><div class="category-bar-fill" style="width:${barPct}%"></div></div>
+        </div>
+        <span class="category-amount">${formatCurrency(amount)}<span class="category-percent">${pct}%</span></span>
+      </div>
+    `;
+  }).join('');
+}
+
+// ==========================
+// EÜR EXPORT
+// ==========================
+async function exportEUR() {
+  const year = parseInt(document.getElementById('finance-year').value) || new Date().getFullYear();
+  const settings = store.settings;
+
+  // Einnahmen sammeln
+  const yearInvoices = store.invoices.filter(inv => {
+    const d = new Date(inv.date);
+    return d.getFullYear() === year && inv.status === 'bezahlt' && inv.type !== 'gutschrift';
+  }).sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  // Ausgaben sammeln
+  const yearExpenses = store.expenses.filter(e => new Date(e.date).getFullYear() === year)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  let totalIncome = 0;
+  let totalExpense = 0;
+  let totalMwstIn = 0;
+  let totalMwstOut = 0;
+
+  // PDF erstellen
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  let page = pdfDoc.addPage([595, 842]); // A4
+  let y = 790;
+  const margin = 50;
+  const pageWidth = 595 - 2 * margin;
+
+  function addText(text, x, yPos, size = 10, bold = false) {
+    page.drawText(text, { x, y: yPos, size, font: bold ? fontBold : font, color: rgb(0.1, 0.1, 0.1) });
+  }
+
+  function checkNewPage() {
+    if (y < 80) {
+      page = pdfDoc.addPage([595, 842]);
+      y = 790;
+    }
+  }
+
+  // Header
+  addText(`Einnahmen-Überschuss-Rechnung ${year}`, margin, y, 16, true);
+  y -= 24;
+  if (settings.company.name) {
+    addText(settings.company.name, margin, y, 10);
+    y -= 14;
+  }
+  if (settings.company.taxNumber) {
+    addText(`Steuernummer: ${settings.company.taxNumber}`, margin, y, 9);
+    y -= 14;
+  }
+  if (settings.company.vatId) {
+    addText(`USt-IdNr.: ${settings.company.vatId}`, margin, y, 9);
+    y -= 14;
+  }
+  y -= 20;
+
+  // Einnahmen-Tabelle
+  addText('EINNAHMEN', margin, y, 12, true);
+  y -= 20;
+  addText('Datum', margin, y, 8, true);
+  addText('Nr.', margin + 70, y, 8, true);
+  addText('Kunde', margin + 140, y, 8, true);
+  addText('Netto', margin + 330, y, 8, true);
+  addText('MwSt', margin + 400, y, 8, true);
+  addText('Brutto', margin + 450, y, 8, true);
+  y -= 4;
+  page.drawLine({ start: { x: margin, y }, end: { x: margin + pageWidth, y }, thickness: 0.5, color: rgb(0.7, 0.7, 0.7) });
+  y -= 14;
+
+  for (const inv of yearInvoices) {
+    checkNewPage();
+    const customer = store.getCustomer(inv.customerId);
+    const totals = store.calculateInvoiceTotal(inv);
+    totalIncome += totals.netto;
+    totalMwstIn += totals.mwst;
+
+    addText(formatDate(inv.date), margin, y, 8);
+    addText(inv.number || '', margin + 70, y, 8);
+    addText((customer ? customer.name : '').substring(0, 28), margin + 140, y, 8);
+    addText(formatCurrency(totals.netto), margin + 320, y, 8);
+    addText(formatCurrency(totals.mwst), margin + 390, y, 8);
+    addText(formatCurrency(totals.brutto), margin + 445, y, 8);
+    y -= 14;
+  }
+
+  y -= 6;
+  page.drawLine({ start: { x: margin, y }, end: { x: margin + pageWidth, y }, thickness: 1, color: rgb(0.2, 0.2, 0.2) });
+  y -= 16;
+  addText('Summe Einnahmen:', margin, y, 10, true);
+  addText(formatCurrency(totalIncome), margin + 320, y, 10, true);
+  addText(formatCurrency(totalMwstIn), margin + 390, y, 10, true);
+  addText(formatCurrency(totalIncome + totalMwstIn), margin + 445, y, 10, true);
+  y -= 30;
+
+  // Ausgaben-Tabelle
+  checkNewPage();
+  addText('AUSGABEN', margin, y, 12, true);
+  y -= 20;
+  addText('Datum', margin, y, 8, true);
+  addText('Beschreibung', margin + 70, y, 8, true);
+  addText('Kategorie', margin + 250, y, 8, true);
+  addText('Netto', margin + 370, y, 8, true);
+  addText('Brutto', margin + 440, y, 8, true);
+  y -= 4;
+  page.drawLine({ start: { x: margin, y }, end: { x: margin + pageWidth, y }, thickness: 0.5, color: rgb(0.7, 0.7, 0.7) });
+  y -= 14;
+
+  for (const exp of yearExpenses) {
+    checkNewPage();
+    const netto = exp.amount / (1 + (exp.taxRate || 0) / 100);
+    const mwst = exp.amount - netto;
+    totalExpense += netto;
+    totalMwstOut += mwst;
+
+    const catInfo = EXPENSE_CATEGORIES[exp.category] || EXPENSE_CATEGORIES.sonstiges;
+    addText(formatDate(exp.date), margin, y, 8);
+    addText((exp.description || '').substring(0, 28), margin + 70, y, 8);
+    addText(catInfo.label.substring(0, 20), margin + 250, y, 8);
+    addText(formatCurrency(netto), margin + 365, y, 8);
+    addText(formatCurrency(exp.amount), margin + 435, y, 8);
+    y -= 14;
+  }
+
+  y -= 6;
+  page.drawLine({ start: { x: margin, y }, end: { x: margin + pageWidth, y }, thickness: 1, color: rgb(0.2, 0.2, 0.2) });
+  y -= 16;
+  addText('Summe Ausgaben:', margin, y, 10, true);
+  addText(formatCurrency(totalExpense), margin + 365, y, 10, true);
+  addText(formatCurrency(totalExpense + totalMwstOut), margin + 435, y, 10, true);
+  y -= 40;
+
+  // Zusammenfassung
+  checkNewPage();
+  addText('ZUSAMMENFASSUNG', margin, y, 12, true);
+  y -= 24;
+  addText(`Einnahmen (netto):`, margin, y, 10);
+  addText(formatCurrency(totalIncome), margin + 350, y, 10, true);
+  y -= 16;
+  addText(`Ausgaben (netto):`, margin, y, 10);
+  addText(`- ${formatCurrency(totalExpense)}`, margin + 350, y, 10, true);
+  y -= 6;
+  page.drawLine({ start: { x: margin + 300, y }, end: { x: margin + pageWidth, y }, thickness: 1, color: rgb(0.2, 0.2, 0.2) });
+  y -= 18;
+  const profit = totalIncome - totalExpense;
+  addText(`Gewinn / Verlust:`, margin, y, 11, true);
+  addText(formatCurrency(profit), margin + 350, y, 11, true);
+  y -= 24;
+
+  if (settings.taxMode === 'regelbesteuerung') {
+    addText(`Vereinnahmte USt:`, margin, y, 10);
+    addText(formatCurrency(totalMwstIn), margin + 350, y, 10);
+    y -= 16;
+    addText(`Gezahlte Vorsteuer:`, margin, y, 10);
+    addText(`- ${formatCurrency(totalMwstOut)}`, margin + 350, y, 10);
+    y -= 16;
+    addText(`USt-Zahllast:`, margin, y, 10, true);
+    addText(formatCurrency(totalMwstIn - totalMwstOut), margin + 350, y, 10, true);
+  }
+
+  // Speichern
+  const pdfBytes = await pdfDoc.save();
+  const savedPath = await window.api.savePDF(pdfBytes, `EUER-${year}`);
+  if (savedPath) {
+    showToast(`EÜR ${year} exportiert`, 'success');
+  }
+}
+
+function initFinanceYearSelect() {
+  const select = document.getElementById('finance-year');
+  const currentYear = new Date().getFullYear();
+  const years = new Set();
+  years.add(currentYear);
+
+  store.invoices.forEach(inv => years.add(new Date(inv.date).getFullYear()));
+  store.expenses.forEach(e => years.add(new Date(e.date).getFullYear()));
+
+  const sortedYears = [...years].sort((a, b) => b - a);
+  select.innerHTML = sortedYears.map(y => `<option value="${y}" ${y === currentYear ? 'selected' : ''}>${y}</option>`).join('');
 }
 
 // --- Helpers ---

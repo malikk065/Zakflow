@@ -32,6 +32,10 @@ contextBridge.exposeInMainWorld('api', {
   saveFirebaseConfig: (config) => ipcRenderer.invoke('firebase:saveConfig', config),
   removeFirebaseConfig: () => ipcRenderer.invoke('firebase:removeConfig'),
 
+  // Expenses
+  getExpenses: () => ipcRenderer.invoke('expenses:getAll'),
+  saveExpenses: (expenses) => ipcRenderer.invoke('expenses:save', expenses),
+
   // Saved Items
   getSavedItems: () => ipcRenderer.invoke('savedItems:getAll'),
   saveSavedItems: (items) => ipcRenderer.invoke('savedItems:save', items),

@@ -349,6 +349,18 @@ ipcMain.handle('firebase:removeConfig', () => {
   return true;
 });
 
+// Expenses (Ausgaben)
+ipcMain.handle('expenses:getAll', () => {
+  const filePath = path.join(getDataPath(), 'expenses.json');
+  return readJSON(filePath) || [];
+});
+
+ipcMain.handle('expenses:save', (_event, expenses) => {
+  const filePath = path.join(getDataPath(), 'expenses.json');
+  writeJSON(filePath, expenses);
+  return true;
+});
+
 // Saved Items (Gespeicherte Positionen)
 ipcMain.handle('savedItems:getAll', () => {
   const filePath = path.join(getDataPath(), 'saved-items.json');

@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ausgabe einreichen</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f8f9fb; --bg-card: #ffffff; --bg-input: #f1f3f5;
+      --text: #111318; --text-sec: #5c6370; --text-tert: #8b929e;
+      --accent: #2563eb; --accent-hover: #1d4ed8;
+      --success: #10b981; --danger: #ef4444;
+      --border: #e2e5ea; --radius: 12px;
+      --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1117; --bg-card: #1a1d25; --bg-input: #232730;
+        --text: #eef0f4; --text-sec: #9ca3af; --text-tert: #6b7280;
+        --accent: #3b82f6; --accent-hover: #60a5fa;
+        --success: #34d399; --danger: #f87171;
+        --border: #2d3139;
+      }
+    }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: var(--bg-card);
+      border-radius: 20px;
+      padding: 40px 36px;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+      border: 1px solid var(--border);
+    }
+    .logo { font-size: 40px; margin-bottom: 8px; }
+    h1 { font-size: 22px; font-weight: 800; margin-bottom: 4px; letter-spacing: -0.5px; }
+    .subtitle { color: var(--text-sec); font-size: 14px; margin-bottom: 28px; }
+    .team-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--bg-input); padding: 6px 14px; border-radius: 20px;
+      font-size: 13px; font-weight: 600; color: var(--accent); margin-bottom: 24px;
+    }
+    .form-group { margin-bottom: 16px; }
+    .form-group label {
+      display: block; font-size: 12px; font-weight: 600;
+      color: var(--text-sec); margin-bottom: 6px;
+    }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 12px 14px;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      font-size: 14px; font-family: var(--font);
+      background: var(--bg-input); color: var(--text);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none; border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+    }
+    .form-row { display: flex; gap: 12px; }
+    .form-row .form-group { flex: 1; }
+    .btn {
+      width: 100%; padding: 14px; font-size: 15px; font-weight: 700;
+      background: var(--accent); color: white; border: none;
+      border-radius: var(--radius); cursor: pointer;
+      transition: all 0.2s; font-family: var(--font);
+    }
+    .btn:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(37,99,235,0.3); }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .success-msg {
+      text-align: center; padding: 40px 20px;
+    }
+    .success-icon { font-size: 56px; margin-bottom: 12px; }
+    .success-text { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .success-sub { color: var(--text-sec); font-size: 14px; margin-bottom: 24px; }
+    .error-msg { color: var(--danger); font-size: 13px; font-weight: 600; margin-bottom: 12px; min-height: 18px; }
+    .loading { text-align: center; padding: 60px; color: var(--text-sec); }
+    .invalid-link { text-align: center; padding: 40px; }
+    .invalid-link h2 { margin-bottom: 8px; }
+    .history-section { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border); }
+    .history-title { font-size: 13px; font-weight: 700; color: var(--text-sec); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .history-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .history-item:last-child { border-bottom: none; }
+    .history-desc { font-weight: 600; }
+    .history-date { color: var(--text-tert); font-size: 12px; }
+    .history-amount { font-weight: 700; color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Loading -->
+    <div id="state-loading" class="loading">
+      <p>Verbindung wird hergestellt...</p>
+    </div>
+
+    <!-- Invalid Link -->
+    <div id="state-invalid" class="invalid-link" style="display:none;">
+      <div class="logo">&#128683;</div>
+      <h2>Ungültiger Link</h2>
+      <p style="color:var(--text-sec);">Dieser Team-Link ist nicht gültig oder abgelaufen.</p>
+    </div>
+
+    <!-- Form -->
+    <div id="state-form" style="display:none;">
+      <div class="logo">&#128176;</div>
+      <h1>Ausgabe einreichen</h1>
+      <p class="subtitle">Trage deine Ausgabe ein — sie wird automatisch synchronisiert.</p>
+      <div class="team-badge" id="team-name-badge">Team</div>
+
+      <div class="error-msg" id="form-error"></div>
+
+      <form id="expense-form">
+        <div class="form-group">
+          <label>Dein Name *</label>
+          <input type="text" id="inp-name" placeholder="z.B. Max" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Datum *</label>
+            <input type="date" id="inp-date" required>
+          </div>
+          <div class="form-group">
+            <label>Betrag (€) *</label>
+            <input type="number" id="inp-amount" step="0.01" min="0.01" required placeholder="0,00">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Beschreibung *</label>
+          <input type="text" id="inp-desc" required placeholder="Was wurde gekauft?">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Kategorie</label>
+            <select id="inp-category">
+              <option value="material">Material & Waren</option>
+              <option value="buero">Büro & Ausstattung</option>
+              <option value="software">Software & Lizenzen</option>
+              <option value="fahrt">Fahrtkosten</option>
+              <option value="versicherung">Versicherungen</option>
+              <option value="telefon">Telefon & Internet</option>
+              <option value="werbung">Werbung & Marketing</option>
+              <option value="beratung">Beratung & Buchhaltung</option>
+              <option value="miete">Miete & Nebenkosten</option>
+              <option value="sonstiges">Sonstiges</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>MwSt</label>
+            <select id="inp-tax">
+              <option value="19">19%</option>
+              <option value="7">7%</option>
+              <option value="0">0%</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notiz (optional)</label>
+          <textarea id="inp-notes" rows="2" placeholder="Zusätzliche Infos..."></textarea>
+        </div>
+        <button type="submit" class="btn" id="submit-btn">Ausgabe einreichen</button>
+      </form>
+
+      <!-- Letzte Einreichungen -->
+      <div class="history-section" id="history-section" style="display:none;">
+        <div class="history-title">Deine letzten Einreichungen</div>
+        <div id="history-list"></div>
+      </div>
+    </div>
+
+    <!-- Success -->
+    <div id="state-success" style="display:none;">
+      <div class="success-msg">
+        <div class="success-icon">&#9989;</div>
+        <div class="success-text">Ausgabe eingereicht!</div>
+        <div class="success-sub">Die Ausgabe wurde gespeichert und synchronisiert.</div>
+        <button class="btn" onclick="showForm()">Weitere Ausgabe</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script>
+    let db = null;
+    let teamId = null;
+    let teamData = null;
+
+    // URL-Parameter lesen
+    const params = new URLSearchParams(window.location.search);
+    const encodedConfig = params.get('c');
+    teamId = params.get('t');
+
+    async function init() {
+      if (!encodedConfig || !teamId) {
+        showState('invalid');
+        return;
+      }
+
+      try {
+        // Config dekodieren
+        const config = JSON.parse(atob(encodedConfig));
+        firebase.initializeApp(config);
+        db = firebase.firestore();
+
+        // Team-Dokument laden
+        const teamDoc = await db.collection('teams').doc(teamId).get();
+        if (!teamDoc.exists) {
+          showState('invalid');
+          return;
+        }
+
+        teamData = teamDoc.data();
+        document.getElementById('team-name-badge').textContent = teamData.name || 'Team';
+        document.title = `Ausgabe - ${teamData.name}`;
+
+        // Datum auf heute setzen
+        document.getElementById('inp-date').value = new Date().toISOString().split('T')[0];
+
+        // Gespeicherten Namen laden
+        const savedName = localStorage.getItem('team_user_name');
+        if (savedName) document.getElementById('inp-name').value = savedName;
+
+        // Letzte Einreichungen laden
+        loadHistory();
+
+        showState('form');
+      } catch (e) {
+        console.error('Init error:', e);
+        showState('invalid');
+      }
+    }
+
+    function showState(state) {
+      ['loading', 'invalid', 'form', 'success'].forEach(s => {
+        document.getElementById(`state-${s}`).style.display = s === state ? '' : 'none';
+      });
+    }
+
+    function showForm() {
+      document.getElementById('inp-desc').value = '';
+      document.getElementById('inp-amount').value = '';
+      document.getElementById('inp-notes').value = '';
+      document.getElementById('form-error').textContent = '';
+      showState('form');
+    }
+
+    // Formular absenden
+    document.getElementById('expense-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      btn.textContent = 'Wird gespeichert...';
+
+      const name = document.getElementById('inp-name').value.trim();
+      const date = document.getElementById('inp-date').value;
+      const amount = parseFloat(document.getElementById('inp-amount').value);
+      const description = document.getElementById('inp-desc').value.trim();
+      const category = document.getElementById('inp-category').value;
+      const taxRate = parseInt(document.getElementById('inp-tax').value);
+      const notes = document.getElementById('inp-notes').value.trim();
+
+      if (!name || !date || !amount || !description) {
+        document.getElementById('form-error').textContent = 'Bitte alle Pflichtfelder ausfüllen';
+        btn.disabled = false;
+        btn.textContent = 'Ausgabe einreichen';
+        return;
+      }
+
+      try {
+        // Namen merken
+        localStorage.setItem('team_user_name', name);
+
+        const expense = {
+          id: Date.now().toString(36) + Math.random().toString(36).substring(2, 8),
+          date,
+          amount,
+          description,
+          category,
+          taxRate,
+          notes: notes ? `[${name}] ${notes}` : `[${name}]`,
+          teamId: teamId,
+          submittedBy: name,
+          createdAt: new Date().toISOString(),
+        };
+
+        // In expenses-Collection speichern (gleiche wie Haupt-App)
+        await db.collection('expenses').doc(expense.id).set(expense);
+
+        showState('success');
+        loadHistory();
+      } catch (err) {
+        console.error('Submit error:', err);
+        document.getElementById('form-error').textContent = 'Fehler beim Speichern: ' + err.message;
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Ausgabe einreichen';
+    });
+
+    async function loadHistory() {
+      try {
+        const name = document.getElementById('inp-name').value.trim() || localStorage.getItem('team_user_name');
+        if (!name) return;
+
+        const snapshot = await db.collection('expenses')
+          .where('teamId', '==', teamId)
+          .where('submittedBy', '==', name)
+          .orderBy('createdAt', 'desc')
+          .limit(5)
+          .get();
+
+        if (snapshot.empty) return;
+
+        const section = document.getElementById('history-section');
+        const list = document.getElementById('history-list');
+        section.style.display = '';
+
+        list.innerHTML = snapshot.docs.map(doc => {
+          const d = doc.data();
+          return `<div class="history-item">
+            <div>
+              <div class="history-desc">${d.description}</div>
+              <div class="history-date">${new Date(d.date).toLocaleDateString('de-DE')}</div>
+            </div>
+            <span class="history-amount">${parseFloat(d.amount).toLocaleString('de-DE', {style:'currency',currency:'EUR'})}</span>
+          </div>`;
+        }).join('');
+      } catch (e) {
+        // Query braucht evtl. einen Index - ignorieren
+        console.warn('History load:', e.message);
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

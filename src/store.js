@@ -5,10 +5,11 @@ class Store {
     this.settings = null;
     this.customers = [];
     this.invoices = [];
-    this.useFirebase = false; // Wird erst true wenn Firebase verbunden ist
+    this.expenses = [];
+    this.useFirebase = false;
     this.isElectron = typeof window.api !== 'undefined';
     this._listeners = [];
-    this.onDataChanged = null; // Callback für UI-Updates bei Echtzeit-Änderungen
+    this.onDataChanged = null;
   }
 
   // --- Echtzeit-Listener starten ---
@@ -28,6 +29,13 @@ class Store {
       if (this.onDataChanged) this.onDataChanged('invoices');
     }, err => console.warn('Rechnungen-Listener Fehler:', err));
     this._listeners.push(unsubInvoices);
+
+    // Ausgaben-Listener
+    const unsubExpenses = db.collection('expenses').onSnapshot(snapshot => {
+      this.expenses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (this.onDataChanged) this.onDataChanged('expenses');
+    }, err => console.warn('Ausgaben-Listener Fehler:', err));
+    this._listeners.push(unsubExpenses);
 
     // Settings-Listener
     const unsubSettings = db.collection('app').doc('settings').onSnapshot(doc => {
@@ -258,6 +266,78 @@ class Store {
 
   getInvoice(id) {
     return this.invoices.find(inv => inv.id === id) || null;
+  }
+
+  // --- Expenses ---
+  async loadExpenses() {
+    if (this.useFirebase) {
+      try {
+        const snapshot = await db.collection('expenses').get();
+        if (!snapshot.empty) {
+          this.expenses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          return this.expenses;
+        }
+      } catch (e) { console.warn('Firebase expenses load failed:', e); }
+    }
+
+    if (this.isElectron) {
+      this.expenses = await window.api.getExpenses();
+    }
+    return this.expenses;
+  }
+
+  async saveExpenses() {
+    if (this.isElectron) {
+      await window.api.saveExpenses(this.expenses);
+    }
+  }
+
+  async addExpense(expense) {
+    expense.id = this.generateId();
+    expense.createdAt = new Date().toISOString();
+    this.expenses.push(expense);
+
+    if (this.useFirebase) {
+      try {
+        await db.collection('expenses').doc(expense.id).set(expense);
+      } catch (e) { console.warn('Firebase expense add failed:', e); }
+    }
+
+    if (this.isElectron) await this.saveExpenses();
+    return expense;
+  }
+
+  async updateExpense(id, data) {
+    const index = this.expenses.findIndex(e => e.id === id);
+    if (index !== -1) {
+      this.expenses[index] = { ...this.expenses[index], ...data };
+
+      if (this.useFirebase) {
+        try {
+          await db.collection('expenses').doc(id).update(data);
+        } catch (e) { console.warn('Firebase expense update failed:', e); }
+      }
+
+      if (this.isElectron) await this.saveExpenses();
+      return this.expenses[index];
+    }
+    return null;
+  }
+
+  async deleteExpense(id) {
+    this.expenses = this.expenses.filter(e => e.id !== id);
+
+    if (this.useFirebase) {
+      try {
+        await db.collection('expenses').doc(id).delete();
+      } catch (e) { console.warn('Firebase expense delete failed:', e); }
+    }
+
+    if (this.isElectron) await this.saveExpenses();
+  }
+
+  getExpense(id) {
+    return this.expenses.find(e => e.id === id) || null;
   }
 
   // --- Helpers ---

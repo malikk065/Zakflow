@@ -210,6 +210,14 @@
           <span class="nav-icon">&#128101;</span>
           <span>Kunden</span>
         </li>
+        <li class="nav-item" data-tab="expenses">
+          <span class="nav-icon">&#128176;</span>
+          <span>Ausgaben</span>
+        </li>
+        <li class="nav-item" data-tab="finances">
+          <span class="nav-icon">&#128200;</span>
+          <span>Finanzen</span>
+        </li>
         <li class="nav-item" data-tab="settings">
           <span class="nav-icon">&#9881;</span>
           <span>Einstellungen</span>
@@ -437,6 +445,241 @@
             </form>
           </div>
         </div>
+      </section>
+
+      <!-- Ausgaben -->
+      <section id="tab-expenses" class="tab-content">
+        <div class="tab-header">
+          <h2>Ausgaben</h2>
+          <button class="btn btn-primary" onclick="showExpenseForm()">+ Neue Ausgabe</button>
+        </div>
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-value" id="stat-expenses-month">0,00 €</div>
+            <div class="stat-label">Diesen Monat</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="stat-expenses-year">0,00 €</div>
+            <div class="stat-label">Dieses Jahr</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="stat-expenses-count">0</div>
+            <div class="stat-label">Ausgaben gesamt</div>
+          </div>
+        </div>
+        <div class="search-bar">
+          <input type="text" id="search-expenses" placeholder="Ausgaben durchsuchen..." oninput="filterExpenses()">
+          <select id="filter-expense-team" onchange="renderExpensesList()" style="width:160px;padding:10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-secondary);color:var(--text-primary);font-family:var(--font);">
+            <option value="">Alle Teams</option>
+            <option value="_none">Ohne Team</option>
+          </select>
+          <select id="filter-expense-category" onchange="renderExpensesList()" style="width:200px;padding:10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-secondary);color:var(--text-primary);font-family:var(--font);">
+            <option value="">Alle Kategorien</option>
+            <option value="material">Material & Waren</option>
+            <option value="buero">Büro & Ausstattung</option>
+            <option value="software">Software & Lizenzen</option>
+            <option value="fahrt">Fahrtkosten</option>
+            <option value="versicherung">Versicherungen</option>
+            <option value="telefon">Telefon & Internet</option>
+            <option value="werbung">Werbung & Marketing</option>
+            <option value="beratung">Beratung & Buchhaltung</option>
+            <option value="miete">Miete & Nebenkosten</option>
+            <option value="sonstiges">Sonstiges</option>
+          </select>
+        </div>
+        <table class="data-table" id="expenses-table">
+          <thead>
+            <tr>
+              <th>Datum</th>
+              <th>Beschreibung</th>
+              <th>Kategorie</th>
+              <th>Betrag</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody id="expenses-tbody"></tbody>
+        </table>
+        <div class="empty-state" id="expenses-empty">
+          <p>Noch keine Ausgaben erfasst.</p>
+          <button class="btn btn-primary" onclick="showExpenseForm()">Erste Ausgabe erfassen</button>
+        </div>
+
+        <!-- Teams -->
+        <div class="section-header" style="margin-top:32px;">
+          <h3>Teams</h3>
+          <button class="btn btn-small" onclick="showTeamForm()">+ Neues Team</button>
+        </div>
+        <p style="color:var(--text-secondary);font-size:12px;margin-bottom:12px;">Erstelle Teams und teile den Link — Mitglieder können Ausgaben direkt einreichen.</p>
+        <div id="teams-list"></div>
+
+        <!-- Team Modal -->
+        <div class="modal" id="team-modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3 id="team-modal-title">Neues Team</h3>
+              <button class="btn-close" onclick="closeTeamModal()">&times;</button>
+            </div>
+            <form id="team-form">
+              <input type="hidden" id="team-edit-id">
+              <div class="form-group">
+                <label>Teamname *</label>
+                <input type="text" id="team-name" required placeholder="z.B. Baustelle Nord, Messe-Team...">
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Speichern</button>
+                <button type="button" class="btn btn-ghost" onclick="closeTeamModal()">Abbrechen</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Team Link Modal -->
+        <div class="modal" id="team-link-modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3>Team-Link teilen</h3>
+              <button class="btn-close" onclick="closeTeamLinkModal()">&times;</button>
+            </div>
+            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">Teile diesen Link mit Teammitgliedern. Sie können damit Ausgaben einreichen — ohne Login.</p>
+            <div style="position:relative;">
+              <input type="text" id="team-link-url" readonly style="width:100%;padding:12px 14px;font-size:12px;font-family:'SF Mono',monospace;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);">
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" onclick="copyTeamLink()">Link kopieren</button>
+              <button class="btn btn-ghost" onclick="closeTeamLinkModal()">Schliessen</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ausgaben-Formular Modal -->
+        <div class="modal" id="expense-modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3 id="expense-modal-title">Neue Ausgabe</h3>
+              <button class="btn-close" onclick="closeExpenseModal()">&times;</button>
+            </div>
+            <form id="expense-form">
+              <input type="hidden" id="expense-edit-id">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Datum *</label>
+                  <input type="date" id="expense-date" required>
+                </div>
+                <div class="form-group">
+                  <label>Betrag (€) *</label>
+                  <input type="number" id="expense-amount" step="0.01" min="0" required placeholder="0,00">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Beschreibung *</label>
+                <input type="text" id="expense-description" required placeholder="z.B. Druckerpatronen, Fahrtkosten...">
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Kategorie</label>
+                  <select id="expense-category">
+                    <option value="material">Material & Waren</option>
+                    <option value="buero">Büro & Ausstattung</option>
+                    <option value="software">Software & Lizenzen</option>
+                    <option value="fahrt">Fahrtkosten</option>
+                    <option value="versicherung">Versicherungen</option>
+                    <option value="telefon">Telefon & Internet</option>
+                    <option value="werbung">Werbung & Marketing</option>
+                    <option value="beratung">Beratung & Buchhaltung</option>
+                    <option value="miete">Miete & Nebenkosten</option>
+                    <option value="sonstiges">Sonstiges</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>MwSt (%)</label>
+                  <select id="expense-tax">
+                    <option value="19">19%</option>
+                    <option value="7">7%</option>
+                    <option value="0">0% (keine MwSt)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Notizen</label>
+                <textarea id="expense-notes" rows="2" placeholder="Optionale Notizen..."></textarea>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Speichern</button>
+                <button type="button" class="btn btn-ghost" onclick="closeExpenseModal()">Abbrechen</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- Finanzen -->
+      <section id="tab-finances" class="tab-content">
+        <div class="tab-header">
+          <h2>Finanzen</h2>
+          <div style="display:flex;gap:8px;">
+            <select id="finance-year" onchange="renderFinances()" style="padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-secondary);color:var(--text-primary);font-family:var(--font);font-weight:600;"></select>
+            <button class="btn" onclick="exportEUR()">📊 EÜR exportieren</button>
+          </div>
+        </div>
+
+        <!-- Gewinn/Verlust Übersicht -->
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-value" style="color:var(--success)" id="fin-revenue">0,00 €</div>
+            <div class="stat-label">Einnahmen</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color:var(--danger)" id="fin-expenses">0,00 €</div>
+            <div class="stat-label">Ausgaben</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="fin-profit">0,00 €</div>
+            <div class="stat-label">Gewinn / Verlust</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="fin-tax-estimate">0,00 €</div>
+            <div class="stat-label">USt-Zahllast (ca.)</div>
+          </div>
+        </div>
+
+        <!-- Umsatz-Chart -->
+        <div class="section-header">
+          <h3>Monatlicher Umsatz</h3>
+        </div>
+        <div class="chart-container" id="revenue-chart"></div>
+
+        <!-- Mahnwesen -->
+        <div class="section-header" style="margin-top:32px;">
+          <h3>Überfällige Rechnungen</h3>
+        </div>
+        <table class="data-table" id="overdue-table">
+          <thead>
+            <tr>
+              <th>Nr.</th>
+              <th>Kunde</th>
+              <th>Betrag</th>
+              <th>Fällig seit</th>
+              <th>Tage überfällig</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody id="overdue-tbody"></tbody>
+        </table>
+        <div class="empty-state" id="overdue-empty" style="padding:30px;">
+          <p style="color:var(--success);">Keine überfälligen Rechnungen!</p>
+        </div>
+
+        <!-- Top-Kunden -->
+        <div class="section-header" style="margin-top:32px;">
+          <h3>Top-Kunden nach Umsatz</h3>
+        </div>
+        <div id="top-customers-list"></div>
+
+        <!-- Ausgaben nach Kategorie -->
+        <div class="section-header" style="margin-top:32px;">
+          <h3>Ausgaben nach Kategorie</h3>
+        </div>
+        <div id="expense-categories-chart"></div>
       </section>
 
       <!-- Einstellungen -->
