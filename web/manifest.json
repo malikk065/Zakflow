@@ -1,7 +1,7 @@
 {
-  "name": "Rechnungsapp",
-  "short_name": "Rechnungen",
-  "description": "Rechnungen erstellen und verwalten",
+  "name": "Zakflow",
+  "short_name": "Zakflow",
+  "description": "Vereins- und Finanzverwaltung",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

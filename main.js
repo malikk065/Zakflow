@@ -48,7 +48,7 @@ function findOneDrivePath() {
 function getDefaultDataPath() {
   const oneDrive = findOneDrivePath();
   if (oneDrive) {
-    return path.join(oneDrive, 'Rechnungsapp');
+    return path.join(oneDrive, 'Zakflow');
   }
   // Fallback: App-lokaler Ordner
   return path.join(app.getPath('userData'), 'data');

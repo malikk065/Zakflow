@@ -1,7 +1,7 @@
 {
-  "name": "rechnungsapp",
+  "name": "zakflow",
   "version": "1.0.0",
-  "description": "Rechnungsapp für Kleingewerbe - Electron Desktop App",
+  "description": "Zakflow - Vereins- und Finanzverwaltung",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -9,8 +9,8 @@
     "build:win": "electron-builder --win"
   },
   "build": {
-    "appId": "com.rechnungsapp.desktop",
-    "productName": "Rechnungsapp",
+    "appId": "com.zakflow.desktop",
+    "productName": "Zakflow",
     "icon": "build/icon",
     "files": [
       "main.js",
