@@ -52,6 +52,35 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 async function initApp() {
+  // Multi-Org: User-Profil laden und Org setzen
+  if (store.useFirebase && auth && auth.currentUser) {
+    await store.loadUserProfile(auth.currentUser.email);
+    renderOrgSwitcher();
+
+    // Admin-Nav anzeigen
+    if (store.userRole === 'admin') {
+      document.getElementById('nav-orgs').style.display = '';
+    }
+
+    // Wenn keine Org zugewiesen → Org-Setup
+    if (!store.currentOrgId && store.allOrgs.length === 0 && store.userRole === 'admin') {
+      // Erster Start: Automatisch Hauptverein erstellen
+      const org = await store.createOrg('Hauptverein');
+      if (org) {
+        store.currentOrgId = org.id;
+        store.userOrgs = [org.id];
+        await db.collection('users').doc(auth.currentUser.email).update({
+          orgs: [org.id],
+          lastOrgId: org.id,
+        });
+      }
+    } else if (!store.currentOrgId && store.userOrgs.length > 0) {
+      store.currentOrgId = store.userOrgs[0];
+    } else if (!store.currentOrgId && store.allOrgs.length > 0 && store.userRole === 'admin') {
+      store.currentOrgId = store.allOrgs[0].id;
+    }
+  }
+
   await store.loadSettings();
   await store.loadCustomers();
   await store.loadInvoices();
@@ -97,38 +126,40 @@ async function initApp() {
 
 async function syncToFirebase() {
   if (typeof db === 'undefined') return;
+  if (!store.currentOrgId) return; // Kein Org → kein Sync
 
   try {
+    const col = (name) => store._col(name);
+    const settingsDoc = store._settingsDoc();
+
     // Settings hochladen
     if (store.settings && store.settings.company && store.settings.company.name) {
-      await db.collection('app').doc('settings').set(store.settings);
+      await settingsDoc.set(store.settings);
     }
 
     // Kunden hochladen (nur wenn Firebase leer ist oder weniger Daten hat)
-    const fbCustomers = await db.collection('customers').get();
+    const fbCustomers = await col('customers').get();
     if (fbCustomers.empty && store.customers.length > 0) {
       console.log('Sync: Lade', store.customers.length, 'Kunden nach Firebase hoch...');
       const batch = db.batch();
       for (const c of store.customers) {
-        batch.set(db.collection('customers').doc(c.id), c);
+        batch.set(col('customers').doc(c.id), c);
       }
       await batch.commit();
     } else if (!fbCustomers.empty && store.customers.length === 0) {
-      // Firebase hat Daten, lokal leer → von Firebase laden
       store.customers = fbCustomers.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       if (window.api) await window.api.saveCustomers(store.customers);
     }
 
     // Rechnungen hochladen
-    const fbInvoices = await db.collection('invoices').get();
+    const fbInvoices = await col('invoices').get();
     if (fbInvoices.empty && store.invoices.length > 0) {
       console.log('Sync: Lade', store.invoices.length, 'Rechnungen nach Firebase hoch...');
-      // Firestore batch limit ist 500, also aufteilen
       for (let i = 0; i < store.invoices.length; i += 400) {
         const batch = db.batch();
         const chunk = store.invoices.slice(i, i + 400);
         for (const inv of chunk) {
-          batch.set(db.collection('invoices').doc(inv.id), inv);
+          batch.set(col('invoices').doc(inv.id), inv);
         }
         await batch.commit();
       }
@@ -138,14 +169,14 @@ async function syncToFirebase() {
     }
 
     // Ausgaben hochladen
-    const fbExpenses = await db.collection('expenses').get();
+    const fbExpenses = await col('expenses').get();
     if (fbExpenses.empty && store.expenses.length > 0) {
       console.log('Sync: Lade', store.expenses.length, 'Ausgaben nach Firebase hoch...');
       for (let i = 0; i < store.expenses.length; i += 400) {
         const batch = db.batch();
         const chunk = store.expenses.slice(i, i + 400);
         for (const exp of chunk) {
-          batch.set(db.collection('expenses').doc(exp.id), exp);
+          batch.set(col('expenses').doc(exp.id), exp);
         }
         await batch.commit();
       }
@@ -154,17 +185,9 @@ async function syncToFirebase() {
       if (window.api) await window.api.saveExpenses(store.expenses);
     }
 
-    // Saved Items hochladen
+    // Saved Items hochladen (org-spezifisch)
     if (savedItems.length > 0) {
-      await db.collection('app').doc('savedItems').set({ items: savedItems });
-    }
-
-    // Passwort synchronisieren
-    if (window.api) {
-      const localHash = await window.api.getPasswordHash();
-      if (localHash) {
-        await db.collection('app').doc('auth').set({ hash: localHash });
-      }
+      await col('app').doc('savedItems').set({ items: savedItems });
     }
 
     console.log('Firebase Sync abgeschlossen');
@@ -199,6 +222,7 @@ function switchTab(tabName) {
   if (tabName === 'expenses') renderExpensesList();
   if (tabName === 'finances') { initFinanceYearSelect(); renderFinances(); }
   if (tabName === 'new-invoice') updateInvoiceForm();
+  if (tabName === 'orgs') renderOrgsList();
 }
 
 // --- Toast ---
@@ -525,6 +549,24 @@ function setupForms() {
     e.preventDefault();
     await saveSettingsForm();
   });
+
+  // Org form (Multi-Verein)
+  const orgForm = document.getElementById('org-form');
+  if (orgForm) {
+    orgForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await saveOrg();
+    });
+  }
+
+  // Member form (Multi-Verein)
+  const memberForm = document.getElementById('member-form');
+  if (memberForm) {
+    memberForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await addOrgMember();
+    });
+  }
 
   // Number preview update
   document.getElementById('settings-invoice-prefix').addEventListener('input', updateNumberPreview);
@@ -2372,6 +2414,208 @@ function initFinanceYearSelect() {
 
   const sortedYears = [...years].sort((a, b) => b - a);
   select.innerHTML = sortedYears.map(y => `<option value="${y}" ${y === currentYear ? 'selected' : ''}>${y}</option>`).join('');
+}
+
+// ==========================
+// MULTI-ORG (Vereine)
+// ==========================
+function renderOrgSwitcher() {
+  const switcher = document.getElementById('org-switcher');
+  const select = document.getElementById('org-select');
+
+  // Orgs bestimmen die der User sehen darf
+  let visibleOrgs = [];
+  if (store.userRole === 'admin') {
+    visibleOrgs = store.allOrgs;
+  } else {
+    visibleOrgs = store.allOrgs.filter(o => store.userOrgs.includes(o.id));
+  }
+
+  if (visibleOrgs.length <= 1 && store.userRole !== 'admin') {
+    switcher.style.display = 'none';
+    return;
+  }
+
+  switcher.style.display = '';
+  let html = '';
+  if (store.userRole === 'admin') {
+    html += `<option value="_all" ${!store.currentOrgId ? 'selected' : ''}>Gesamtübersicht</option>`;
+  }
+  html += visibleOrgs.map(org =>
+    `<option value="${org.id}" ${store.currentOrgId === org.id ? 'selected' : ''}>${escapeHtml(org.name)}</option>`
+  ).join('');
+  select.innerHTML = html;
+}
+
+async function switchOrg(orgId) {
+  if (orgId === '_all') {
+    // Gesamtübersicht — alle Daten laden (ohne org filter)
+    store.stopRealtimeSync();
+    store.currentOrgId = null;
+    await store.loadSettings();
+    // Für Gesamtübersicht: Alle Orgs-Daten zusammenführen
+    await loadAllOrgsData();
+    store.startRealtimeSync();
+  } else {
+    await store.switchOrg(orgId);
+  }
+
+  // UI aktualisieren
+  loadExpenseCategories();
+  renderDashboard();
+  renderCustomersList();
+  renderExpensesList();
+  await loadTeams();
+  renderSettingsForm();
+  renderExpenseCategoriesSettings();
+  updateInvoiceForm();
+  updateNumberPreview();
+  initFinanceYearSelect();
+  showToast(`Gewechselt zu: ${orgId === '_all' ? 'Gesamtübersicht' : (store.allOrgs.find(o => o.id === orgId) || {}).name || orgId}`, 'success');
+}
+
+async function loadAllOrgsData() {
+  // Admin: Daten aus allen Orgs zusammenführen
+  if (!store.useFirebase || !db) return;
+
+  store.customers = [];
+  store.invoices = [];
+  store.expenses = [];
+
+  for (const org of store.allOrgs) {
+    try {
+      const custs = await db.collection('orgs').doc(org.id).collection('customers').get();
+      custs.docs.forEach(doc => store.customers.push({ id: doc.id, ...doc.data(), _orgId: org.id, _orgName: org.name }));
+
+      const invs = await db.collection('orgs').doc(org.id).collection('invoices').get();
+      invs.docs.forEach(doc => store.invoices.push({ id: doc.id, ...doc.data(), _orgId: org.id, _orgName: org.name }));
+
+      const exps = await db.collection('orgs').doc(org.id).collection('expenses').get();
+      exps.docs.forEach(doc => store.expenses.push({ id: doc.id, ...doc.data(), _orgId: org.id, _orgName: org.name }));
+    } catch (e) {
+      console.warn(`Fehler beim Laden von Org ${org.name}:`, e);
+    }
+  }
+}
+
+// --- Org CRUD ---
+function showOrgForm() {
+  document.getElementById('org-modal').classList.add('active');
+  document.getElementById('org-name').value = '';
+}
+
+function closeOrgModal() {
+  document.getElementById('org-modal').classList.remove('active');
+}
+
+async function saveOrg() {
+  const name = document.getElementById('org-name').value.trim();
+  if (!name) {
+    showToast('Bitte einen Vereinsnamen eingeben', 'error');
+    return;
+  }
+
+  const org = await store.createOrg(name);
+  if (org) {
+    closeOrgModal();
+    renderOrgsList();
+    renderOrgSwitcher();
+    showToast(`Verein "${name}" erstellt`, 'success');
+  } else {
+    showToast('Fehler beim Erstellen', 'error');
+  }
+}
+
+async function deleteOrg(orgId) {
+  const org = store.allOrgs.find(o => o.id === orgId);
+  if (!confirm(`Verein "${org ? org.name : ''}" wirklich löschen?\n\nAlle Daten dieses Vereins werden gelöscht!`)) return;
+
+  await store.deleteOrg(orgId);
+
+  // Wenn aktive Org gelöscht → wechseln
+  if (store.currentOrgId === orgId) {
+    const first = store.allOrgs[0];
+    if (first) await store.switchOrg(first.id);
+  }
+
+  renderOrgsList();
+  renderOrgSwitcher();
+  showToast('Verein gelöscht');
+}
+
+async function renderOrgsList() {
+  const container = document.getElementById('orgs-list');
+  if (!container) return;
+
+  await store.loadAllOrgs();
+  const allUsers = await store.getAllUsers();
+
+  if (store.allOrgs.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-tertiary);padding:20px;">Noch keine Vereine erstellt.</p>';
+    return;
+  }
+
+  container.innerHTML = store.allOrgs.map(org => {
+    const orgUsers = allUsers.filter(u => (u.orgs || []).includes(org.id));
+    return `
+      <div style="background:var(--bg-secondary);border:1px solid var(--border-light);border-radius:var(--radius-lg);padding:24px;margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div>
+            <h3 style="font-size:18px;font-weight:700;margin:0;">${escapeHtml(org.name)}</h3>
+            <span style="font-size:12px;color:var(--text-tertiary);">${orgUsers.length} Mitglied${orgUsers.length !== 1 ? 'er' : ''}</span>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-small" onclick="showMemberForm('${org.id}')">+ Mitglied</button>
+            <button class="btn btn-small btn-danger" onclick="deleteOrg('${org.id}')">Löschen</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${orgUsers.length === 0 ? '<p style="color:var(--text-tertiary);font-size:13px;">Noch keine Mitglieder zugewiesen.</p>' :
+            orgUsers.map(u => `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg-tertiary);border-radius:6px;">
+                <div>
+                  <span style="font-size:13px;font-weight:600;">${escapeHtml(u.email)}</span>
+                  <span class="badge" style="margin-left:8px;font-size:10px;padding:2px 8px;${u.role === 'admin' ? 'background:var(--warning-subtle);color:var(--warning);' : 'background:var(--accent-subtle);color:var(--accent);'}">${u.role === 'admin' ? 'Admin' : 'Mitglied'}</span>
+                </div>
+                ${u.role !== 'admin' ? `<button class="btn-icon" onclick="removeOrgMember('${u.email}','${org.id}')" title="Entfernen" style="color:var(--danger);">✕</button>` : ''}
+              </div>
+            `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function showMemberForm(orgId) {
+  document.getElementById('member-org-id').value = orgId;
+  document.getElementById('member-email').value = '';
+  document.getElementById('member-modal').classList.add('active');
+}
+
+function closeMemberModal() {
+  document.getElementById('member-modal').classList.remove('active');
+}
+
+async function addOrgMember() {
+  const orgId = document.getElementById('member-org-id').value;
+  const email = document.getElementById('member-email').value.trim().toLowerCase();
+
+  if (!email) {
+    showToast('Bitte eine E-Mail eingeben', 'error');
+    return;
+  }
+
+  await store.assignUserToOrg(email, orgId);
+  closeMemberModal();
+  renderOrgsList();
+  showToast(`${email} zum Verein hinzugefügt`, 'success');
+}
+
+async function removeOrgMember(email, orgId) {
+  if (!confirm(`${email} aus dem Verein entfernen?`)) return;
+  await store.removeUserFromOrg(email, orgId);
+  renderOrgsList();
+  showToast('Mitglied entfernt');
 }
 
 // --- Helpers ---
