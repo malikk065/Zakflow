@@ -1113,11 +1113,10 @@ async function authLogin() {
     await Promise.race([loginPromise, timeoutPromise]);
     showToast('Erfolgreich angemeldet', 'success');
   } catch (err) {
-    if (err.message === 'timeout') {
-      showAuthError(errorEl, 'Verbindung dauert zu lange – bitte App neu starten');
-    } else {
-      showAuthError(errorEl, firebaseAuthErrorMessage(err));
-    }
+    const msg = err.message === 'timeout'
+      ? 'Verbindung dauert zu lange – bitte App neu starten'
+      : firebaseAuthErrorMessage(err);
+    showAuthError(errorEl, msg);
     document.getElementById('auth-password').value = '';
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Anmelden'; }
