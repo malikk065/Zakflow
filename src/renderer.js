@@ -1015,24 +1015,40 @@ function firebaseAuthErrorMessage(err) {
 async function authLogin() {
   const email = document.getElementById('auth-email').value.trim();
   const password = document.getElementById('auth-password').value;
+  const errorEl = document.getElementById('auth-error');
+  const btn = document.querySelector('#auth-login-form .auth-btn');
 
   if (!email || !password) {
-    document.getElementById('auth-error').textContent = 'Bitte E-Mail und Passwort eingeben';
+    errorEl.textContent = 'Bitte E-Mail und Passwort eingeben';
     return;
   }
 
   if (typeof auth === 'undefined' || !auth) {
-    document.getElementById('auth-error').textContent = 'Firebase nicht verbunden';
+    errorEl.textContent = 'Firebase nicht verbunden – bitte App neu starten';
     return;
   }
 
+  // Loading-State
+  errorEl.textContent = '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Anmelden...'; }
+
   try {
-    await auth.signInWithEmailAndPassword(email, password);
-    // onAuthStateChanged übernimmt den Rest
+    // Timeout: wenn Firebase nicht antwortet (z.B. IndexedDB-Lock)
+    const loginPromise = auth.signInWithEmailAndPassword(email, password);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('timeout')), 15000)
+    );
+    await Promise.race([loginPromise, timeoutPromise]);
     showToast('Erfolgreich angemeldet', 'success');
   } catch (err) {
-    document.getElementById('auth-error').textContent = firebaseAuthErrorMessage(err);
+    if (err.message === 'timeout') {
+      errorEl.textContent = 'Verbindung dauert zu lange – bitte App neu starten';
+    } else {
+      errorEl.textContent = firebaseAuthErrorMessage(err);
+    }
     document.getElementById('auth-password').value = '';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Anmelden'; }
   }
 }
 
@@ -1040,31 +1056,46 @@ async function authRegister() {
   const email = document.getElementById('auth-reg-email').value.trim();
   const password = document.getElementById('auth-reg-password').value;
   const password2 = document.getElementById('auth-reg-password2').value;
+  const errorEl = document.getElementById('auth-reg-error');
+  const btn = document.querySelector('#auth-register-form .auth-btn');
 
   if (!email || !password) {
-    document.getElementById('auth-reg-error').textContent = 'Bitte alle Felder ausfüllen';
+    errorEl.textContent = 'Bitte alle Felder ausfüllen';
     return;
   }
   if (password.length < 6) {
-    document.getElementById('auth-reg-error').textContent = 'Passwort muss mindestens 6 Zeichen haben';
+    errorEl.textContent = 'Passwort muss mindestens 6 Zeichen haben';
     return;
   }
   if (password !== password2) {
-    document.getElementById('auth-reg-error').textContent = 'Passwörter stimmen nicht überein';
+    errorEl.textContent = 'Passwörter stimmen nicht überein';
     return;
   }
 
   if (typeof auth === 'undefined' || !auth) {
-    document.getElementById('auth-reg-error').textContent = 'Firebase nicht verbunden – bitte Setup durchführen';
+    errorEl.textContent = 'Firebase nicht verbunden – bitte Setup durchführen';
     return;
   }
 
+  // Loading-State
+  errorEl.textContent = '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Erstelle Konto...'; }
+
   try {
-    await auth.createUserWithEmailAndPassword(email, password);
+    const registerPromise = auth.createUserWithEmailAndPassword(email, password);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('timeout')), 15000)
+    );
+    await Promise.race([registerPromise, timeoutPromise]);
     showToast(`Willkommen, ${email}!`, 'success');
-    // onAuthStateChanged übernimmt den Rest
   } catch (err) {
-    document.getElementById('auth-reg-error').textContent = firebaseAuthErrorMessage(err);
+    if (err.message === 'timeout') {
+      errorEl.textContent = 'Verbindung dauert zu lange – bitte App neu starten';
+    } else {
+      errorEl.textContent = firebaseAuthErrorMessage(err);
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Konto erstellen'; }
   }
 }
 

@@ -5,6 +5,23 @@ const os = require('os');
 
 let mainWindow;
 
+// --- IndexedDB Lock-Bereinigung (verhindert hängende Firebase Auth) ---
+function cleanupIndexedDBLocks() {
+  const userDataPath = app.getPath('userData');
+  const idbPath = path.join(userDataPath, 'IndexedDB');
+  if (fs.existsSync(idbPath)) {
+    try {
+      const dirs = fs.readdirSync(idbPath);
+      for (const dir of dirs) {
+        const lockFile = path.join(idbPath, dir, 'LOCK');
+        if (fs.existsSync(lockFile)) {
+          try { fs.unlinkSync(lockFile); } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+}
+
 // --- OneDrive Pfad-Erkennung ---
 function findOneDrivePath() {
   const homeDir = os.homedir();
@@ -137,6 +154,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  cleanupIndexedDBLocks();
   createWindow();
 
   app.on('activate', () => {
