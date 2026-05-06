@@ -954,33 +954,100 @@ function wizardBack() {
 }
 
 async function wizardFinish() {
-  const config = {
-    apiKey: document.getElementById('wiz-fb-apiKey').value.trim(),
-    authDomain: document.getElementById('wiz-fb-authDomain').value.trim(),
-    projectId: document.getElementById('wiz-fb-projectId').value.trim(),
-    storageBucket: document.getElementById('wiz-fb-storageBucket').value.trim(),
-    messagingSenderId: document.getElementById('wiz-fb-messagingSenderId').value.trim(),
-    appId: document.getElementById('wiz-fb-appId').value.trim(),
-  };
+  const errorEl = document.getElementById('wiz-error');
+  const btn = document.querySelector('.wizard-step.active .btn-primary') ||
+              document.querySelector('.wizard-step[data-step="6"] .btn-primary');
+  errorEl.textContent = '';
 
-  if (!config.apiKey || !config.projectId || !config.authDomain) {
-    document.getElementById('wiz-error').textContent = 'Bitte mindestens API Key, Project ID und Auth Domain eingeben';
+  let config = null;
+
+  // 1. Versuche aus dem Paste-Feld zu parsen
+  const pasteField = document.getElementById('wiz-fb-paste');
+  if (pasteField && pasteField.value.trim()) {
+    config = parseFirebaseConfigBlock(pasteField.value.trim());
+    if (!config) {
+      showAuthError(errorEl, 'Konnte die Config nicht lesen. Bitte den ganzen firebaseConfig-Block kopieren (mit den geschweiften Klammern).');
+      return;
+    }
+  }
+
+  // 2. Fallback: Einzelfelder
+  if (!config) {
+    config = {
+      apiKey: document.getElementById('wiz-fb-apiKey').value.trim(),
+      authDomain: document.getElementById('wiz-fb-authDomain').value.trim(),
+      projectId: document.getElementById('wiz-fb-projectId').value.trim(),
+      storageBucket: document.getElementById('wiz-fb-storageBucket').value.trim(),
+      messagingSenderId: document.getElementById('wiz-fb-messagingSenderId').value.trim(),
+      appId: document.getElementById('wiz-fb-appId').value.trim(),
+    };
+  }
+
+  if (!config.apiKey || !config.projectId) {
+    showAuthError(errorEl, 'Bitte die Firebase Config einfügen (API Key und Project ID werden benötigt)');
     return;
   }
 
-  const success = initFirebase(config);
-  if (!success) {
-    document.getElementById('wiz-error').textContent = 'Firebase Verbindung fehlgeschlagen – bitte Daten prüfen';
-    return;
+  // authDomain automatisch ableiten falls leer
+  if (!config.authDomain && config.projectId) {
+    config.authDomain = config.projectId + '.firebaseapp.com';
   }
 
-  await window.api.saveFirebaseConfig(config);
-  store.useFirebase = true;
+  // Loading
+  if (btn) { btn.disabled = true; btn.textContent = 'Verbinde...'; }
 
-  // Wizard ausblenden, Register zeigen
-  document.getElementById('setup-wizard').style.display = 'none';
-  showAuthRegister();
-  showToast('Firebase verbunden! Erstelle jetzt dein Konto.', 'success');
+  try {
+    const success = initFirebase(config);
+    if (!success) {
+      showAuthError(errorEl, 'Firebase Verbindung fehlgeschlagen – bitte Daten prüfen');
+      return;
+    }
+
+    await window.api.saveFirebaseConfig(config);
+    store.useFirebase = true;
+
+    // Wizard ausblenden, Register zeigen
+    document.getElementById('setup-wizard').style.display = 'none';
+    showAuthRegister();
+    showToast('Firebase verbunden! Erstelle jetzt dein Konto.', 'success');
+  } catch (err) {
+    console.error('wizardFinish Fehler:', err);
+    showAuthError(errorEl, 'Fehler: ' + (err.message || 'Unbekannter Fehler'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Verbinden & weiter →'; }
+  }
+}
+
+// Firebase Config aus kopiertem JS-Block parsen
+function parseFirebaseConfigBlock(text) {
+  try {
+    // Versuche JSON-artige Werte rauszulesen
+    const extract = (key) => {
+      const patterns = [
+        new RegExp(`["']?${key}["']?\\s*[:=]\\s*["']([^"']+)["']`),
+        new RegExp(`${key}\\s*[:=]\\s*["']([^"']+)["']`),
+      ];
+      for (const p of patterns) {
+        const m = text.match(p);
+        if (m) return m[1];
+      }
+      return '';
+    };
+
+    const config = {
+      apiKey: extract('apiKey'),
+      authDomain: extract('authDomain'),
+      projectId: extract('projectId'),
+      storageBucket: extract('storageBucket'),
+      messagingSenderId: extract('messagingSenderId'),
+      appId: extract('appId'),
+    };
+
+    if (config.apiKey && config.projectId) return config;
+    return null;
+  } catch (e) {
+    return null;
+  }
 }
 
 // ==========================

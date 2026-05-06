@@ -45,7 +45,7 @@
               Damit wird deine App auf Desktop und Handy synchronisiert und sicher gespeichert.
             </p>
           </div>
-          <button class="btn btn-primary auth-btn" onclick="wizardNext()">Los geht's →</button>
+          <button class="btn btn-primary auth-btn" type="button" onclick="wizardNext()">Los geht's →</button>
         </div>
 
         <!-- Step 2: Firebase Projekt erstellen -->
@@ -62,8 +62,8 @@
             </ol>
           </div>
           <div class="wizard-actions">
-            <button class="btn" onclick="wizardBack()">← Zurück</button>
-            <button class="btn btn-primary" onclick="wizardNext()">Weiter →</button>
+            <button class="btn" type="button" onclick="wizardBack()">← Zurück</button>
+            <button class="btn btn-primary" type="button" onclick="wizardNext()">Weiter →</button>
           </div>
         </div>
 
@@ -84,8 +84,8 @@
             </p>
           </div>
           <div class="wizard-actions">
-            <button class="btn" onclick="wizardBack()">← Zurück</button>
-            <button class="btn btn-primary" onclick="wizardNext()">Weiter →</button>
+            <button class="btn" type="button" onclick="wizardBack()">← Zurück</button>
+            <button class="btn btn-primary" type="button" onclick="wizardNext()">Weiter →</button>
           </div>
         </div>
 
@@ -106,8 +106,8 @@
             </p>
           </div>
           <div class="wizard-actions">
-            <button class="btn" onclick="wizardBack()">← Zurück</button>
-            <button class="btn btn-primary" onclick="wizardNext()">Weiter →</button>
+            <button class="btn" type="button" onclick="wizardBack()">← Zurück</button>
+            <button class="btn btn-primary" type="button" onclick="wizardNext()">Weiter →</button>
           </div>
         </div>
 
@@ -125,8 +125,8 @@
             </ol>
           </div>
           <div class="wizard-actions">
-            <button class="btn" onclick="wizardBack()">← Zurück</button>
-            <button class="btn btn-primary" onclick="wizardNext()">Weiter →</button>
+            <button class="btn" type="button" onclick="wizardBack()">← Zurück</button>
+            <button class="btn btn-primary" type="button" onclick="wizardNext()">Weiter →</button>
           </div>
         </div>
 
@@ -134,21 +134,32 @@
         <div class="wizard-step" data-step="6">
           <h2 class="auth-title">Config einfügen</h2>
           <p class="auth-subtitle">Schritt 5 von 5 – Letzter Schritt!</p>
-          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:18px;">
-            Kopiere die Werte aus <code>firebaseConfig</code> hier rein:
+          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
+            Kopiere den ganzen <code>firebaseConfig</code>-Block hier rein:
           </p>
-          <div style="text-align:left;display:flex;flex-direction:column;gap:10px;">
-            <input type="text" id="wiz-fb-apiKey" placeholder="apiKey" class="auth-input">
-            <input type="text" id="wiz-fb-authDomain" placeholder="authDomain" class="auth-input">
-            <input type="text" id="wiz-fb-projectId" placeholder="projectId" class="auth-input">
-            <input type="text" id="wiz-fb-storageBucket" placeholder="storageBucket" class="auth-input">
-            <input type="text" id="wiz-fb-messagingSenderId" placeholder="messagingSenderId" class="auth-input">
-            <input type="text" id="wiz-fb-appId" placeholder="appId" class="auth-input">
-          </div>
+          <textarea id="wiz-fb-paste" class="auth-input" rows="10" placeholder='const firebaseConfig = {
+  apiKey: "AIza...",
+  authDomain: "mein-projekt.firebaseapp.com",
+  projectId: "mein-projekt",
+  storageBucket: "mein-projekt.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123..."
+};' style="font-family:'SF Mono','Fira Code',monospace;font-size:12px;resize:vertical;width:100%;text-align:left;"></textarea>
+          <details style="margin-top:10px;text-align:left;">
+            <summary style="font-size:12px;color:var(--text-tertiary);cursor:pointer;">Oder einzeln eingeben</summary>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">
+              <input type="text" id="wiz-fb-apiKey" placeholder="apiKey" class="auth-input">
+              <input type="text" id="wiz-fb-authDomain" placeholder="authDomain" class="auth-input">
+              <input type="text" id="wiz-fb-projectId" placeholder="projectId" class="auth-input">
+              <input type="text" id="wiz-fb-storageBucket" placeholder="storageBucket" class="auth-input">
+              <input type="text" id="wiz-fb-messagingSenderId" placeholder="messagingSenderId" class="auth-input">
+              <input type="text" id="wiz-fb-appId" placeholder="appId" class="auth-input">
+            </div>
+          </details>
           <div class="auth-error" id="wiz-error"></div>
           <div class="wizard-actions">
-            <button class="btn" onclick="wizardBack()">← Zurück</button>
-            <button class="btn btn-primary" onclick="wizardFinish()">Verbinden & weiter →</button>
+            <button class="btn" type="button" onclick="wizardBack()">← Zurück</button>
+            <button class="btn btn-primary" type="button" onclick="wizardFinish()">Verbinden & weiter →</button>
           </div>
         </div>
       </div>
@@ -197,6 +208,10 @@
       <div class="sidebar-header">
         <h1 class="app-title">Zakflow</h1>
       </div>
+      <!-- Org Switcher -->
+      <div class="org-switcher" id="org-switcher" style="display:none;">
+        <select id="org-select" onchange="switchOrg(this.value)"></select>
+      </div>
       <ul class="nav-list">
         <li class="nav-item active" data-tab="dashboard">
           <span class="nav-icon">&#9776;</span>
@@ -217,6 +232,10 @@
         <li class="nav-item" data-tab="finances">
           <span class="nav-icon">&#128200;</span>
           <span>Finanzen</span>
+        </li>
+        <li class="nav-item" data-tab="orgs" id="nav-orgs" style="display:none;">
+          <span class="nav-icon">&#127970;</span>
+          <span>Vereine</span>
         </li>
         <li class="nav-item" data-tab="settings">
           <span class="nav-icon">&#9881;</span>
@@ -680,6 +699,59 @@
           <h3>Ausgaben nach Kategorie</h3>
         </div>
         <div id="expense-categories-chart"></div>
+      </section>
+
+      <!-- Vereine (Admin) -->
+      <section id="tab-orgs" class="tab-content">
+        <div class="tab-header">
+          <h2>Vereine verwalten</h2>
+          <button class="btn btn-primary" onclick="showOrgForm()">+ Neuer Verein</button>
+        </div>
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:20px;">Als Admin kannst du Vereine erstellen und Mitglieder zuweisen. Jeder Verein hat eigene Rechnungen, Ausgaben und Einstellungen.</p>
+
+        <div id="orgs-list"></div>
+
+        <!-- Org Modal -->
+        <div class="modal" id="org-modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3 id="org-modal-title">Neuer Verein</h3>
+              <button class="btn-close" onclick="closeOrgModal()">&times;</button>
+            </div>
+            <form id="org-form">
+              <div class="form-group">
+                <label>Vereinsname *</label>
+                <input type="text" id="org-name" required placeholder="z.B. Jugendverein, Frauenverein...">
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Erstellen</button>
+                <button type="button" class="btn btn-ghost" onclick="closeOrgModal()">Abbrechen</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Member Modal -->
+        <div class="modal" id="member-modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3 id="member-modal-title">Mitglied hinzufügen</h3>
+              <button class="btn-close" onclick="closeMemberModal()">&times;</button>
+            </div>
+            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">Die Person muss sich zuerst in der App registriert haben.</p>
+            <form id="member-form">
+              <input type="hidden" id="member-org-id">
+              <div class="form-group">
+                <label>E-Mail des Mitglieds *</label>
+                <input type="email" id="member-email" required placeholder="name@beispiel.de">
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Hinzufügen</button>
+                <button type="button" class="btn btn-ghost" onclick="closeMemberModal()">Abbrechen</button>
+              </div>
+            </form>
+          </div>
+        </div>
       </section>
 
       <!-- Einstellungen -->
