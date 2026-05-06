@@ -10,6 +10,195 @@ class Store {
     this.isElectron = typeof window.api !== 'undefined';
     this._listeners = [];
     this.onDataChanged = null;
+
+    // Multi-Org
+    this.currentOrgId = null;  // aktive Organisation
+    this.userOrgs = [];        // Orgs zu denen der User gehört
+    this.userRole = null;      // 'admin' oder 'member'
+    this.allOrgs = [];         // Alle Orgs (nur für Admin)
+  }
+
+  // --- Org-Scoped Collection Helpers ---
+  _col(name) {
+    // Wenn orgId gesetzt, Subcollection unter org verwenden
+    if (this.currentOrgId && this.useFirebase) {
+      return db.collection('orgs').doc(this.currentOrgId).collection(name);
+    }
+    // Fallback: root collection (Kompatibilität)
+    return db.collection(name);
+  }
+
+  _settingsDoc() {
+    if (this.currentOrgId && this.useFirebase) {
+      return db.collection('orgs').doc(this.currentOrgId).collection('app').doc('settings');
+    }
+    return db.collection('app').doc('settings');
+  }
+
+  // --- Multi-Org Management ---
+  async loadUserProfile(email) {
+    if (!this.useFirebase || !db) return;
+
+    try {
+      const userDoc = await db.collection('users').doc(email).get();
+      if (userDoc.exists) {
+        const data = userDoc.data();
+        this.userRole = data.role || 'member';
+        this.userOrgs = data.orgs || [];
+        this.currentOrgId = data.lastOrgId || (this.userOrgs.length > 0 ? this.userOrgs[0] : null);
+      } else {
+        // Erster User → wird Admin
+        const orgsSnapshot = await db.collection('orgs').get();
+        if (orgsSnapshot.empty) {
+          // Ganz neues System → Admin
+          this.userRole = 'admin';
+          this.userOrgs = [];
+          this.currentOrgId = null;
+        } else {
+          // Orgs existieren, aber User nicht registriert
+          this.userRole = 'member';
+          this.userOrgs = [];
+          this.currentOrgId = null;
+        }
+        await db.collection('users').doc(email).set({
+          email,
+          role: this.userRole,
+          orgs: this.userOrgs,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      // Alle Orgs laden
+      await this.loadAllOrgs();
+    } catch (e) {
+      console.warn('User profile load failed:', e);
+    }
+  }
+
+  async loadAllOrgs() {
+    if (!this.useFirebase || !db) return;
+    try {
+      const snapshot = await db.collection('orgs').get();
+      this.allOrgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (e) {
+      console.warn('Orgs load failed:', e);
+    }
+  }
+
+  async createOrg(name) {
+    if (!this.useFirebase || !db) return null;
+
+    const org = {
+      name,
+      createdAt: new Date().toISOString(),
+    };
+
+    try {
+      const docRef = await db.collection('orgs').add(org);
+      org.id = docRef.id;
+      this.allOrgs.push(org);
+
+      // Default-Settings für die Org erstellen
+      await db.collection('orgs').doc(org.id).collection('app').doc('settings').set(this.defaultSettings());
+
+      return org;
+    } catch (e) {
+      console.warn('Org create failed:', e);
+      return null;
+    }
+  }
+
+  async deleteOrg(orgId) {
+    if (!this.useFirebase || !db) return;
+    try {
+      await db.collection('orgs').doc(orgId).delete();
+      this.allOrgs = this.allOrgs.filter(o => o.id !== orgId);
+
+      // User die diese Org hatten updaten
+      const usersSnapshot = await db.collection('users').where('orgs', 'array-contains', orgId).get();
+      for (const userDoc of usersSnapshot.docs) {
+        const userData = userDoc.data();
+        const updatedOrgs = (userData.orgs || []).filter(id => id !== orgId);
+        await db.collection('users').doc(userDoc.id).update({ orgs: updatedOrgs });
+      }
+    } catch (e) {
+      console.warn('Org delete failed:', e);
+    }
+  }
+
+  async switchOrg(orgId) {
+    this.stopRealtimeSync();
+    this.currentOrgId = orgId;
+
+    // lastOrgId speichern
+    if (auth && auth.currentUser) {
+      try {
+        await db.collection('users').doc(auth.currentUser.email).update({ lastOrgId: orgId });
+      } catch (e) {}
+    }
+
+    // Daten neu laden
+    await this.loadSettings();
+    await this.loadCustomers();
+    await this.loadInvoices();
+    await this.loadExpenses();
+    this.startRealtimeSync();
+  }
+
+  async assignUserToOrg(email, orgId) {
+    if (!this.useFirebase || !db) return;
+    try {
+      const userDoc = await db.collection('users').doc(email).get();
+      if (userDoc.exists) {
+        const data = userDoc.data();
+        const orgs = data.orgs || [];
+        if (!orgs.includes(orgId)) {
+          orgs.push(orgId);
+          await db.collection('users').doc(email).update({ orgs });
+        }
+      } else {
+        // Neuen User anlegen
+        await db.collection('users').doc(email).set({
+          email,
+          role: 'member',
+          orgs: [orgId],
+          createdAt: new Date().toISOString(),
+        });
+      }
+    } catch (e) {
+      console.warn('User assign failed:', e);
+    }
+  }
+
+  async removeUserFromOrg(email, orgId) {
+    if (!this.useFirebase || !db) return;
+    try {
+      const userDoc = await db.collection('users').doc(email).get();
+      if (userDoc.exists) {
+        const data = userDoc.data();
+        const orgs = (data.orgs || []).filter(id => id !== orgId);
+        await db.collection('users').doc(email).update({ orgs });
+      }
+    } catch (e) {
+      console.warn('User remove failed:', e);
+    }
+  }
+
+  async setUserRole(email, role) {
+    if (!this.useFirebase || !db) return;
+    try {
+      await db.collection('users').doc(email).update({ role });
+    } catch (e) {
+      console.warn('Role set failed:', e);
+    }
+  }
+
+  async getAllUsers() {
+    if (!this.useFirebase || !db) return [];
+    try {
+      const snapshot = await db.collection('users').get();
+      return snapshot.docs.map(doc => ({ email: doc.id, ...doc.data() }));
+    } catch (e) { return []; }
   }
 
   // --- Echtzeit-Listener starten ---
@@ -17,28 +206,28 @@ class Store {
     if (!this.useFirebase) return;
 
     // Kunden-Listener
-    const unsubCustomers = db.collection('customers').onSnapshot(snapshot => {
+    const unsubCustomers = this._col('customers').onSnapshot(snapshot => {
       this.customers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       if (this.onDataChanged) this.onDataChanged('customers');
     }, err => console.warn('Kunden-Listener Fehler:', err));
     this._listeners.push(unsubCustomers);
 
     // Rechnungen-Listener
-    const unsubInvoices = db.collection('invoices').onSnapshot(snapshot => {
+    const unsubInvoices = this._col('invoices').onSnapshot(snapshot => {
       this.invoices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       if (this.onDataChanged) this.onDataChanged('invoices');
     }, err => console.warn('Rechnungen-Listener Fehler:', err));
     this._listeners.push(unsubInvoices);
 
     // Ausgaben-Listener
-    const unsubExpenses = db.collection('expenses').onSnapshot(snapshot => {
+    const unsubExpenses = this._col('expenses').onSnapshot(snapshot => {
       this.expenses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       if (this.onDataChanged) this.onDataChanged('expenses');
     }, err => console.warn('Ausgaben-Listener Fehler:', err));
     this._listeners.push(unsubExpenses);
 
     // Settings-Listener
-    const unsubSettings = db.collection('app').doc('settings').onSnapshot(doc => {
+    const unsubSettings = this._settingsDoc().onSnapshot(doc => {
       if (doc.exists) {
         this.settings = doc.data();
         if (this.onDataChanged) this.onDataChanged('settings');
@@ -46,7 +235,7 @@ class Store {
     }, err => console.warn('Settings-Listener Fehler:', err));
     this._listeners.push(unsubSettings);
 
-    console.log('Echtzeit-Sync gestartet');
+    console.log('Echtzeit-Sync gestartet' + (this.currentOrgId ? ` (Org: ${this.currentOrgId})` : ''));
   }
 
   stopRealtimeSync() {
@@ -58,7 +247,7 @@ class Store {
   async loadSettings() {
     if (this.useFirebase) {
       try {
-        const doc = await db.collection('app').doc('settings').get();
+        const doc = await this._settingsDoc().get();
         if (doc.exists) {
           this.settings = doc.data();
           return this.settings;
@@ -66,7 +255,6 @@ class Store {
       } catch (e) { console.warn('Firebase settings load failed:', e); }
     }
 
-    // Fallback: lokale Dateien (Electron)
     if (this.isElectron) {
       this.settings = await window.api.getSettings();
     }
@@ -82,7 +270,7 @@ class Store {
 
     if (this.useFirebase) {
       try {
-        await db.collection('app').doc('settings').set(settings);
+        await this._settingsDoc().set(settings);
       } catch (e) { console.warn('Firebase settings save failed:', e); }
     }
 
@@ -110,7 +298,7 @@ class Store {
   async loadCustomers() {
     if (this.useFirebase) {
       try {
-        const snapshot = await db.collection('customers').get();
+        const snapshot = await this._col('customers').get();
         if (!snapshot.empty) {
           this.customers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           return this.customers;
@@ -128,7 +316,6 @@ class Store {
     if (this.isElectron) {
       await window.api.saveCustomers(this.customers);
     }
-    // Firebase: Kunden werden einzeln gespeichert (add/update/delete)
   }
 
   async addCustomer(customer) {
@@ -138,7 +325,7 @@ class Store {
 
     if (this.useFirebase) {
       try {
-        await db.collection('customers').doc(customer.id).set(customer);
+        await this._col('customers').doc(customer.id).set(customer);
       } catch (e) { console.warn('Firebase customer add failed:', e); }
     }
 
@@ -153,7 +340,7 @@ class Store {
 
       if (this.useFirebase) {
         try {
-          await db.collection('customers').doc(id).update(data);
+          await this._col('customers').doc(id).update(data);
         } catch (e) { console.warn('Firebase customer update failed:', e); }
       }
 
@@ -168,7 +355,7 @@ class Store {
 
     if (this.useFirebase) {
       try {
-        await db.collection('customers').doc(id).delete();
+        await this._col('customers').doc(id).delete();
       } catch (e) { console.warn('Firebase customer delete failed:', e); }
     }
 
@@ -183,7 +370,7 @@ class Store {
   async loadInvoices() {
     if (this.useFirebase) {
       try {
-        const snapshot = await db.collection('invoices').get();
+        const snapshot = await this._col('invoices').get();
         if (!snapshot.empty) {
           this.invoices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           return this.invoices;
@@ -201,7 +388,6 @@ class Store {
     if (this.isElectron) {
       await window.api.saveInvoices(this.invoices);
     }
-    // Firebase: Rechnungen werden einzeln gespeichert
   }
 
   async getNextInvoiceNumber() {
@@ -226,7 +412,7 @@ class Store {
 
     if (this.useFirebase) {
       try {
-        await db.collection('invoices').doc(invoice.id).set(invoice);
+        await this._col('invoices').doc(invoice.id).set(invoice);
       } catch (e) { console.warn('Firebase invoice add failed:', e); }
     }
 
@@ -242,7 +428,7 @@ class Store {
 
       if (this.useFirebase) {
         try {
-          await db.collection('invoices').doc(id).update(data);
+          await this._col('invoices').doc(id).update(data);
         } catch (e) { console.warn('Firebase invoice update failed:', e); }
       }
 
@@ -257,7 +443,7 @@ class Store {
 
     if (this.useFirebase) {
       try {
-        await db.collection('invoices').doc(id).delete();
+        await this._col('invoices').doc(id).delete();
       } catch (e) { console.warn('Firebase invoice delete failed:', e); }
     }
 
@@ -272,7 +458,7 @@ class Store {
   async loadExpenses() {
     if (this.useFirebase) {
       try {
-        const snapshot = await db.collection('expenses').get();
+        const snapshot = await this._col('expenses').get();
         if (!snapshot.empty) {
           this.expenses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           return this.expenses;
@@ -299,7 +485,7 @@ class Store {
 
     if (this.useFirebase) {
       try {
-        await db.collection('expenses').doc(expense.id).set(expense);
+        await this._col('expenses').doc(expense.id).set(expense);
       } catch (e) { console.warn('Firebase expense add failed:', e); }
     }
 
@@ -314,7 +500,7 @@ class Store {
 
       if (this.useFirebase) {
         try {
-          await db.collection('expenses').doc(id).update(data);
+          await this._col('expenses').doc(id).update(data);
         } catch (e) { console.warn('Firebase expense update failed:', e); }
       }
 
@@ -329,7 +515,7 @@ class Store {
 
     if (this.useFirebase) {
       try {
-        await db.collection('expenses').doc(id).delete();
+        await this._col('expenses').doc(id).delete();
       } catch (e) { console.warn('Firebase expense delete failed:', e); }
     }
 

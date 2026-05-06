@@ -18,6 +18,9 @@
       "src/**/*",
       "node_modules/pdf-lib/dist/pdf-lib.min.js",
       "node_modules/pdf-parse/**/*",
+      "node_modules/firebase/firebase-app-compat.js",
+      "node_modules/firebase/firebase-firestore-compat.js",
+      "node_modules/firebase/firebase-auth-compat.js",
       "build/icon.png"
     ],
     "mac": {
@@ -51,6 +54,7 @@
   "author": "",
   "license": "UNLICENSED",
   "dependencies": {
+    "firebase": "^10.14.1",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^1.1.1"
   },

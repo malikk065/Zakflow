@@ -971,13 +971,14 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast"></div>
 
-  <script src="../node_modules/pdf-lib/dist/pdf-lib.min.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-  <script src="firebase-config.js"></script>
-  <script src="store.js"></script>
-  <script src="pdf-generator.js"></script>
-  <script src="renderer.js"></script>
+  <script>window._scriptErrors = [];</script>
+  <script src="../node_modules/pdf-lib/dist/pdf-lib.min.js" onerror="window._scriptErrors.push('pdf-lib')"></script>
+  <script src="../node_modules/firebase/firebase-app-compat.js" onerror="window._scriptErrors.push('firebase-app')"></script>
+  <script src="../node_modules/firebase/firebase-firestore-compat.js" onerror="window._scriptErrors.push('firebase-firestore')"></script>
+  <script src="../node_modules/firebase/firebase-auth-compat.js" onerror="window._scriptErrors.push('firebase-auth')"></script>
+  <script src="firebase-config.js" onerror="window._scriptErrors.push('firebase-config')"></script>
+  <script src="store.js" onerror="window._scriptErrors.push('store')"></script>
+  <script src="pdf-generator.js" onerror="window._scriptErrors.push('pdf-generator')"></script>
+  <script src="renderer.js" onerror="window._scriptErrors.push('renderer')"></script>
 </body>
 </html>

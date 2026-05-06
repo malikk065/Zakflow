@@ -6,6 +6,32 @@ let darkMode = false;
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', async () => {
+  // Script-Ladefehler prüfen
+  if (window._scriptErrors && window._scriptErrors.length > 0) {
+    console.error('Scripts konnten nicht geladen werden:', window._scriptErrors.join(', '));
+    const overlay = document.getElementById('auth-overlay');
+    if (overlay) {
+      overlay.style.display = 'flex';
+      overlay.innerHTML = `
+        <div class="auth-box" style="text-align:center;padding:40px;">
+          <h2 style="color:var(--danger);margin-bottom:16px;">Ladefehler</h2>
+          <p style="color:var(--text-secondary);margin-bottom:12px;">Folgende Komponenten konnten nicht geladen werden:</p>
+          <p style="color:var(--text-primary);font-weight:600;margin-bottom:16px;">${window._scriptErrors.join(', ')}</p>
+          <p style="color:var(--text-secondary);font-size:13px;margin-bottom:20px;">Bitte prüfe deine Internetverbindung und starte die App neu.</p>
+          <button class="btn btn-primary" onclick="location.reload()" style="width:100%;">App neu laden</button>
+        </div>
+      `;
+    }
+    return;
+  }
+
+  // Prüfen ob store korrekt geladen wurde
+  if (typeof store === 'undefined' || typeof Store === 'undefined') {
+    console.error('Store nicht geladen! store:', typeof store, 'Store:', typeof Store);
+    alert('Fehler: App-Daten konnten nicht geladen werden. Bitte starte die App neu.');
+    return;
+  }
+
   // Plattform-Klasse setzen für CSS
   document.body.parentElement.classList.add(`platform-${navigator.platform.includes('Mac') ? 'darwin' : 'win32'}`);
 
@@ -59,18 +85,32 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function initApp() {
   // Multi-Org: User-Profil laden und Org setzen
   if (store.useFirebase && auth && auth.currentUser) {
-    await store.loadUserProfile(auth.currentUser.email);
+    // User-Profil laden (mit Fallback falls Methode fehlt)
+    if (typeof store.loadUserProfile === 'function') {
+      await store.loadUserProfile(auth.currentUser.email);
+    } else {
+      console.error('store.loadUserProfile fehlt! store Typ:', typeof store, 'Konstruktor:', store && store.constructor && store.constructor.name, 'Methoden:', store ? Object.getOwnPropertyNames(Object.getPrototypeOf(store)).join(',') : 'N/A');
+      store.userRole = 'admin';
+      store.userOrgs = [];
+      store.allOrgs = [];
+    }
 
     // Einladung verarbeiten: Neuen User automatisch dem Verein zuweisen
     if (window._pendingInviteOrgId && !store.userOrgs.includes(window._pendingInviteOrgId)) {
-      await store.assignUserToOrg(auth.currentUser.email, window._pendingInviteOrgId);
-      store.userOrgs.push(window._pendingInviteOrgId);
-      store.currentOrgId = window._pendingInviteOrgId;
-      await db.collection('users').doc(auth.currentUser.email).update({
-        orgs: store.userOrgs,
-        lastOrgId: window._pendingInviteOrgId,
-      });
-      showToast(`Du bist jetzt Mitglied von "${window._pendingInviteOrgName || 'Verein'}"`, 'success');
+      try {
+        if (typeof store.assignUserToOrg === 'function') {
+          await store.assignUserToOrg(auth.currentUser.email, window._pendingInviteOrgId);
+        }
+        store.userOrgs.push(window._pendingInviteOrgId);
+        store.currentOrgId = window._pendingInviteOrgId;
+        await db.collection('users').doc(auth.currentUser.email).update({
+          orgs: store.userOrgs,
+          lastOrgId: window._pendingInviteOrgId,
+        });
+        showToast(`Du bist jetzt Mitglied von "${window._pendingInviteOrgName || 'Verein'}"`, 'success');
+      } catch (e) {
+        console.warn('Einladung konnte nicht verarbeitet werden:', e);
+      }
       window._pendingInviteOrgId = null;
       window._pendingInviteOrgName = null;
     }
