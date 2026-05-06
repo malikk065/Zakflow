@@ -35,8 +35,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     auth.onAuthStateChanged(async (user) => {
       if (user) {
         // Eingeloggt
-        document.getElementById('auth-overlay').style.display = 'none';
-        await initApp();
+        try {
+          document.getElementById('auth-overlay').style.display = 'none';
+          await initApp();
+        } catch (err) {
+          console.error('initApp Fehler:', err);
+          showToast('Fehler beim Laden: ' + err.message, 'error');
+        }
       } else {
         // Nicht eingeloggt → Login zeigen
         document.getElementById('auth-overlay').style.display = 'flex';
@@ -1018,22 +1023,22 @@ async function authLogin() {
   const errorEl = document.getElementById('auth-error');
   const btn = document.querySelector('#auth-login-form .auth-btn');
 
+  errorEl.textContent = '';
+
   if (!email || !password) {
-    errorEl.textContent = 'Bitte E-Mail und Passwort eingeben';
+    showAuthError(errorEl, 'Bitte E-Mail und Passwort eingeben');
     return;
   }
 
   if (typeof auth === 'undefined' || !auth) {
-    errorEl.textContent = 'Firebase nicht verbunden – bitte App neu starten';
+    showAuthError(errorEl, 'Firebase nicht verbunden – bitte App neu starten');
     return;
   }
 
   // Loading-State
-  errorEl.textContent = '';
   if (btn) { btn.disabled = true; btn.textContent = 'Anmelden...'; }
 
   try {
-    // Timeout: wenn Firebase nicht antwortet (z.B. IndexedDB-Lock)
     const loginPromise = auth.signInWithEmailAndPassword(email, password);
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('timeout')), 15000)
@@ -1042,14 +1047,25 @@ async function authLogin() {
     showToast('Erfolgreich angemeldet', 'success');
   } catch (err) {
     if (err.message === 'timeout') {
-      errorEl.textContent = 'Verbindung dauert zu lange – bitte App neu starten';
+      showAuthError(errorEl, 'Verbindung dauert zu lange – bitte App neu starten');
     } else {
-      errorEl.textContent = firebaseAuthErrorMessage(err);
+      showAuthError(errorEl, firebaseAuthErrorMessage(err));
     }
     document.getElementById('auth-password').value = '';
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Anmelden'; }
   }
+}
+
+// Fehlermeldung deutlich sichtbar anzeigen mit Shake-Animation
+function showAuthError(el, message) {
+  el.textContent = message;
+  el.style.display = 'block';
+  // Shake-Animation auslösen
+  const box = el.closest('.auth-box') || el.parentElement;
+  box.classList.remove('shake');
+  void box.offsetWidth; // Force reflow
+  box.classList.add('shake');
 }
 
 async function authRegister() {
@@ -1059,26 +1075,27 @@ async function authRegister() {
   const errorEl = document.getElementById('auth-reg-error');
   const btn = document.querySelector('#auth-register-form .auth-btn');
 
+  errorEl.textContent = '';
+
   if (!email || !password) {
-    errorEl.textContent = 'Bitte alle Felder ausfüllen';
+    showAuthError(errorEl, 'Bitte alle Felder ausfüllen');
     return;
   }
   if (password.length < 6) {
-    errorEl.textContent = 'Passwort muss mindestens 6 Zeichen haben';
+    showAuthError(errorEl, 'Passwort muss mindestens 6 Zeichen haben');
     return;
   }
   if (password !== password2) {
-    errorEl.textContent = 'Passwörter stimmen nicht überein';
+    showAuthError(errorEl, 'Passwörter stimmen nicht überein');
     return;
   }
 
   if (typeof auth === 'undefined' || !auth) {
-    errorEl.textContent = 'Firebase nicht verbunden – bitte Setup durchführen';
+    showAuthError(errorEl, 'Firebase nicht verbunden – bitte Setup durchführen');
     return;
   }
 
   // Loading-State
-  errorEl.textContent = '';
   if (btn) { btn.disabled = true; btn.textContent = 'Erstelle Konto...'; }
 
   try {
@@ -1090,9 +1107,9 @@ async function authRegister() {
     showToast(`Willkommen, ${email}!`, 'success');
   } catch (err) {
     if (err.message === 'timeout') {
-      errorEl.textContent = 'Verbindung dauert zu lange – bitte App neu starten';
+      showAuthError(errorEl, 'Verbindung dauert zu lange – bitte App neu starten');
     } else {
-      errorEl.textContent = firebaseAuthErrorMessage(err);
+      showAuthError(errorEl, firebaseAuthErrorMessage(err));
     }
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Konto erstellen'; }
