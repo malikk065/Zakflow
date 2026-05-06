@@ -167,11 +167,6 @@ html, body {
   flex: 1;
   overflow-y: auto;
   padding: 36px 48px;
-  -webkit-app-region: drag;
-}
-
-.content * {
-  -webkit-app-region: no-drag;
 }
 
 .tab-content {
@@ -193,7 +188,6 @@ html, body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 28px;
-  -webkit-app-region: drag;
 }
 
 .tab-header h2 {
@@ -201,10 +195,6 @@ html, body {
   font-weight: 800;
   letter-spacing: -0.6px;
   color: var(--text-primary);
-}
-
-.tab-header .btn {
-  -webkit-app-region: no-drag;
 }
 
 /* --- Stats --- */
@@ -908,7 +898,6 @@ td {
   display: flex;
   align-items: center;
   justify-content: center;
-  -webkit-app-region: drag;
 }
 
 .auth-box {
@@ -920,12 +909,7 @@ td {
   text-align: center;
   max-width: 380px;
   width: 100%;
-  -webkit-app-region: no-drag;
   animation: modalIn 0.3s ease;
-}
-
-.auth-box * {
-  -webkit-app-region: no-drag;
 }
 
 .auth-logo {
