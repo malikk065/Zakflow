@@ -62,27 +62,41 @@ async function initApp() {
     await store.loadUserProfile(auth.currentUser.email);
     renderOrgSwitcher();
 
-    // Admin-Nav anzeigen
+    // Admin-Funktionen anzeigen/verstecken
     if (store.userRole === 'admin') {
       document.getElementById('nav-orgs').style.display = '';
+    } else {
+      document.getElementById('nav-orgs').style.display = 'none';
     }
 
-    // Wenn keine Org zugewiesen → Org-Setup
-    if (!store.currentOrgId && store.allOrgs.length === 0 && store.userRole === 'admin') {
-      // Erster Start: Automatisch Hauptverein erstellen
-      const org = await store.createOrg('Hauptverein');
-      if (org) {
-        store.currentOrgId = org.id;
-        store.userOrgs = [org.id];
-        await db.collection('users').doc(auth.currentUser.email).update({
-          orgs: [org.id],
-          lastOrgId: org.id,
-        });
+    // Org zuweisen
+    if (store.userRole === 'admin') {
+      // Admin: Wenn keine Org existiert → Hauptverein erstellen
+      if (!store.currentOrgId && store.allOrgs.length === 0) {
+        const org = await store.createOrg('Hauptverein');
+        if (org) {
+          store.currentOrgId = org.id;
+          store.userOrgs = [org.id];
+          await db.collection('users').doc(auth.currentUser.email).update({
+            orgs: [org.id],
+            lastOrgId: org.id,
+          });
+        }
+      } else if (!store.currentOrgId && store.allOrgs.length > 0) {
+        store.currentOrgId = store.allOrgs[0].id;
       }
-    } else if (!store.currentOrgId && store.userOrgs.length > 0) {
-      store.currentOrgId = store.userOrgs[0];
-    } else if (!store.currentOrgId && store.allOrgs.length > 0 && store.userRole === 'admin') {
-      store.currentOrgId = store.allOrgs[0].id;
+    } else {
+      // Member: Nur auf zugewiesene Orgs zugreifen
+      if (!store.currentOrgId && store.userOrgs.length > 0) {
+        store.currentOrgId = store.userOrgs[0];
+      } else if (store.currentOrgId && !store.userOrgs.includes(store.currentOrgId)) {
+        // Gespeicherte Org ist nicht mehr zugewiesen → auf erste erlaubte wechseln
+        store.currentOrgId = store.userOrgs.length > 0 ? store.userOrgs[0] : null;
+      }
+      // Member ohne Org-Zuweisung → Hinweis zeigen
+      if (!store.currentOrgId) {
+        showToast('Du bist noch keinem Verein zugewiesen. Bitte kontaktiere den Admin.', 'error');
+      }
     }
   }
 
@@ -2533,18 +2547,19 @@ function initFinanceYearSelect() {
 // ==========================
 // MULTI-ORG (Vereine)
 // ==========================
+function getVisibleOrgs() {
+  if (store.userRole === 'admin') {
+    return store.allOrgs;
+  }
+  return store.allOrgs.filter(o => store.userOrgs.includes(o.id));
+}
+
 function renderOrgSwitcher() {
   const switcher = document.getElementById('org-switcher');
   const select = document.getElementById('org-select');
+  const visibleOrgs = getVisibleOrgs();
 
-  // Orgs bestimmen die der User sehen darf
-  let visibleOrgs = [];
-  if (store.userRole === 'admin') {
-    visibleOrgs = store.allOrgs;
-  } else {
-    visibleOrgs = store.allOrgs.filter(o => store.userOrgs.includes(o.id));
-  }
-
+  // Member mit nur 1 Org → kein Switcher nötig
   if (visibleOrgs.length <= 1 && store.userRole !== 'admin') {
     switcher.style.display = 'none';
     return;
@@ -2552,6 +2567,7 @@ function renderOrgSwitcher() {
 
   switcher.style.display = '';
   let html = '';
+  // Nur Admins sehen "Gesamtübersicht"
   if (store.userRole === 'admin') {
     html += `<option value="_all" ${!store.currentOrgId ? 'selected' : ''}>Gesamtübersicht</option>`;
   }
@@ -2562,12 +2578,23 @@ function renderOrgSwitcher() {
 }
 
 async function switchOrg(orgId) {
+  // Zugriffskontrolle: Member dürfen nur auf ihre Orgs zugreifen
+  if (store.userRole !== 'admin') {
+    if (orgId === '_all') {
+      showToast('Kein Zugriff auf Gesamtübersicht', 'error');
+      return;
+    }
+    if (!store.userOrgs.includes(orgId)) {
+      showToast('Kein Zugriff auf diesen Verein', 'error');
+      return;
+    }
+  }
+
   if (orgId === '_all') {
-    // Gesamtübersicht — alle Daten laden (ohne org filter)
+    // Gesamtübersicht — nur für Admins
     store.stopRealtimeSync();
     store.currentOrgId = null;
     await store.loadSettings();
-    // Für Gesamtübersicht: Alle Orgs-Daten zusammenführen
     await loadAllOrgsData();
     store.startRealtimeSync();
   } else {
@@ -2589,8 +2616,8 @@ async function switchOrg(orgId) {
 }
 
 async function loadAllOrgsData() {
-  // Admin: Daten aus allen Orgs zusammenführen
-  if (!store.useFirebase || !db) return;
+  // Nur Admins dürfen alle Orgs laden
+  if (!store.useFirebase || !db || store.userRole !== 'admin') return;
 
   store.customers = [];
   store.invoices = [];
@@ -2612,8 +2639,9 @@ async function loadAllOrgsData() {
   }
 }
 
-// --- Org CRUD ---
+// --- Org CRUD (nur Admin) ---
 function showOrgForm() {
+  if (store.userRole !== 'admin') { showToast('Nur Admins können Vereine erstellen', 'error'); return; }
   document.getElementById('org-modal').classList.add('active');
   document.getElementById('org-name').value = '';
 }
@@ -2641,6 +2669,7 @@ async function saveOrg() {
 }
 
 async function deleteOrg(orgId) {
+  if (store.userRole !== 'admin') { showToast('Nur Admins können Vereine löschen', 'error'); return; }
   const org = store.allOrgs.find(o => o.id === orgId);
   if (!confirm(`Verein "${org ? org.name : ''}" wirklich löschen?\n\nAlle Daten dieses Vereins werden gelöscht!`)) return;
 
@@ -2701,6 +2730,7 @@ async function renderOrgsList() {
 }
 
 function showMemberForm(orgId) {
+  if (store.userRole !== 'admin') { showToast('Nur Admins können Mitglieder verwalten', 'error'); return; }
   document.getElementById('member-org-id').value = orgId;
   document.getElementById('member-email').value = '';
   document.getElementById('member-modal').classList.add('active');
@@ -2711,6 +2741,7 @@ function closeMemberModal() {
 }
 
 async function addOrgMember() {
+  if (store.userRole !== 'admin') { showToast('Nur Admins können Mitglieder verwalten', 'error'); return; }
   const orgId = document.getElementById('member-org-id').value;
   const email = document.getElementById('member-email').value.trim().toLowerCase();
 
@@ -2726,6 +2757,7 @@ async function addOrgMember() {
 }
 
 async function removeOrgMember(email, orgId) {
+  if (store.userRole !== 'admin') { showToast('Nur Admins können Mitglieder entfernen', 'error'); return; }
   if (!confirm(`${email} aus dem Verein entfernen?`)) return;
   await store.removeUserFromOrg(email, orgId);
   renderOrgsList();
