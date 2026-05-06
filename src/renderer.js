@@ -60,6 +60,21 @@ async function initApp() {
   // Multi-Org: User-Profil laden und Org setzen
   if (store.useFirebase && auth && auth.currentUser) {
     await store.loadUserProfile(auth.currentUser.email);
+
+    // Einladung verarbeiten: Neuen User automatisch dem Verein zuweisen
+    if (window._pendingInviteOrgId && !store.userOrgs.includes(window._pendingInviteOrgId)) {
+      await store.assignUserToOrg(auth.currentUser.email, window._pendingInviteOrgId);
+      store.userOrgs.push(window._pendingInviteOrgId);
+      store.currentOrgId = window._pendingInviteOrgId;
+      await db.collection('users').doc(auth.currentUser.email).update({
+        orgs: store.userOrgs,
+        lastOrgId: window._pendingInviteOrgId,
+      });
+      showToast(`Du bist jetzt Mitglied von "${window._pendingInviteOrgName || 'Verein'}"`, 'success');
+      window._pendingInviteOrgId = null;
+      window._pendingInviteOrgName = null;
+    }
+
     renderOrgSwitcher();
 
     // Admin-Funktionen anzeigen/verstecken
@@ -2708,6 +2723,7 @@ async function renderOrgsList() {
             <span style="font-size:12px;color:var(--text-tertiary);">${orgUsers.length} Mitglied${orgUsers.length !== 1 ? 'er' : ''}</span>
           </div>
           <div style="display:flex;gap:8px;">
+            <button class="btn btn-small" onclick="showInviteCode('${org.id}')">🔗 Einladen</button>
             <button class="btn btn-small" onclick="showMemberForm('${org.id}')">+ Mitglied</button>
             <button class="btn btn-small btn-danger" onclick="deleteOrg('${org.id}')">Löschen</button>
           </div>
@@ -2762,6 +2778,103 @@ async function removeOrgMember(email, orgId) {
   await store.removeUserFromOrg(email, orgId);
   renderOrgsList();
   showToast('Mitglied entfernt');
+}
+
+// --- Einladungssystem ---
+function showInviteCode(orgId) {
+  if (store.userRole !== 'admin') { showToast('Nur Admins können einladen', 'error'); return; }
+
+  const org = store.allOrgs.find(o => o.id === orgId);
+  if (!org) return;
+
+  // Einladungscode = Base64-kodierte Firebase Config + Org-ID
+  const config = firebase.app().options;
+  const inviteData = {
+    c: {
+      apiKey: config.apiKey,
+      authDomain: config.authDomain,
+      projectId: config.projectId,
+      storageBucket: config.storageBucket,
+      messagingSenderId: config.messagingSenderId,
+      appId: config.appId,
+    },
+    o: orgId,
+    n: org.name,
+  };
+  const code = btoa(unescape(encodeURIComponent(JSON.stringify(inviteData))));
+
+  document.getElementById('invite-code').value = code;
+  document.getElementById('invite-modal').classList.add('active');
+}
+
+function closeInviteModal() {
+  document.getElementById('invite-modal').classList.remove('active');
+}
+
+function copyInviteCode() {
+  const textarea = document.getElementById('invite-code');
+  textarea.select();
+  navigator.clipboard.writeText(textarea.value).then(() => {
+    showToast('Einladungscode kopiert!', 'success');
+  }).catch(() => {
+    document.execCommand('copy');
+    showToast('Einladungscode kopiert!', 'success');
+  });
+}
+
+async function joinWithInvite() {
+  const errorEl = document.getElementById('invite-error');
+  const code = document.getElementById('invite-paste').value.trim();
+  errorEl.textContent = '';
+
+  if (!code) {
+    showAuthError(errorEl, 'Bitte den Einladungscode einfügen');
+    return;
+  }
+
+  // Code dekodieren
+  let inviteData;
+  try {
+    inviteData = JSON.parse(decodeURIComponent(escape(atob(code))));
+  } catch (e) {
+    showAuthError(errorEl, 'Ungültiger Einladungscode – bitte nochmal kopieren');
+    return;
+  }
+
+  if (!inviteData.c || !inviteData.c.apiKey || !inviteData.c.projectId) {
+    showAuthError(errorEl, 'Ungültiger Einladungscode – Daten fehlen');
+    return;
+  }
+
+  // Firebase verbinden
+  const btn = document.querySelector('#invite-paste + .auth-error + .btn-primary') ||
+              document.querySelector('.wizard-step.active .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Verbinde...'; }
+
+  try {
+    const success = await initFirebase(inviteData.c);
+    if (!success) {
+      showAuthError(errorEl, 'Firebase Verbindung fehlgeschlagen');
+      return;
+    }
+
+    // Config speichern
+    await window.api.saveFirebaseConfig(inviteData.c);
+    store.useFirebase = true;
+
+    // Org-ID merken für nach der Registrierung
+    window._pendingInviteOrgId = inviteData.o;
+    window._pendingInviteOrgName = inviteData.n;
+
+    // Wizard ausblenden, Register zeigen
+    document.getElementById('setup-wizard').style.display = 'none';
+    showAuthRegister();
+    showToast(`Einladung für "${inviteData.n || 'Verein'}" angenommen! Erstelle jetzt dein Konto.`, 'success');
+  } catch (err) {
+    showAuthError(errorEl, 'Fehler: ' + (err.message || 'Unbekannter Fehler'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Beitreten →'; }
+  }
 }
 
 // --- Helpers ---

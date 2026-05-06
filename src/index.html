@@ -32,20 +32,21 @@
         <div class="wizard-step active" data-step="1">
           <div class="auth-logo" style="font-size:36px;font-weight:900;color:var(--accent);letter-spacing:-2px;">Z</div>
           <h2 class="auth-title">Willkommen!</h2>
-          <p class="auth-subtitle">Lass uns deine Rechnungsapp einrichten – das dauert ca. 5 Minuten.</p>
-          <div class="wizard-info">
-            <p style="margin-bottom:12px;"><strong>Was du brauchst:</strong></p>
-            <ul style="text-align:left;list-style:none;padding:0;">
-              <li style="padding:6px 0;">✓ Ein Google-Konto</li>
-              <li style="padding:6px 0;">✓ 5 Minuten Zeit</li>
-              <li style="padding:6px 0;">✓ Einen Browser</li>
-            </ul>
-            <p style="margin-top:14px;color:var(--text-secondary);font-size:13px;">
-              Wir nutzen <strong>Firebase</strong> (von Google) – kostenlos für deinen Bedarf.
-              Damit wird deine App auf Desktop und Handy synchronisiert und sicher gespeichert.
-            </p>
+          <p class="auth-subtitle">Wie möchtest du starten?</p>
+
+          <!-- Option A: Einladungscode -->
+          <div class="wizard-info" style="margin-bottom:16px;">
+            <p style="margin-bottom:10px;"><strong>Einladung erhalten?</strong></p>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">Füge den Code ein, den du vom Admin bekommen hast:</p>
+            <textarea id="invite-paste" rows="3" placeholder="Einladungscode hier einfügen..." style="width:100%;font-family:'SF Mono','Fira Code',monospace;font-size:11px;padding:10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);resize:none;"></textarea>
+            <div class="auth-error" id="invite-error"></div>
+            <button class="btn btn-primary" type="button" onclick="joinWithInvite()" style="width:100%;margin-top:10px;">Beitreten →</button>
           </div>
-          <button class="btn btn-primary auth-btn" type="button" onclick="wizardNext()">Los geht's →</button>
+
+          <!-- Option B: Selbst einrichten -->
+          <div style="text-align:center;color:var(--text-tertiary);font-size:12px;margin:16px 0;">— oder —</div>
+          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">Du bist Admin und richtest alles selbst ein?</p>
+          <button class="btn auth-btn" type="button" onclick="wizardNext()" style="width:100%;">Selbst einrichten (Firebase Setup) →</button>
         </div>
 
         <!-- Step 2: Firebase Projekt erstellen -->
@@ -728,6 +729,22 @@
                 <button type="button" class="btn btn-ghost" onclick="closeOrgModal()">Abbrechen</button>
               </div>
             </form>
+          </div>
+        </div>
+
+        <!-- Invite Link Modal -->
+        <div class="modal" id="invite-modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3>Einladungslink</h3>
+              <button class="btn-close" onclick="closeInviteModal()">&times;</button>
+            </div>
+            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">Teile diesen Code mit dem Mitglied. Es muss ihn beim ersten Start der App einfügen.</p>
+            <textarea id="invite-code" readonly rows="4" style="width:100%;font-family:'SF Mono','Fira Code',monospace;font-size:11px;padding:12px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius);resize:none;color:var(--text-primary);"></textarea>
+            <div class="form-actions" style="margin-top:16px;">
+              <button type="button" class="btn btn-primary" onclick="copyInviteCode()">Kopieren</button>
+              <button type="button" class="btn btn-ghost" onclick="closeInviteModal()">Schließen</button>
+            </div>
           </div>
         </div>
 
