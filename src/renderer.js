@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Firebase Config laden und verbinden
   const fbConfig = await window.api.getFirebaseConfig();
   if (fbConfig) {
-    const ok = initFirebase(fbConfig);
+    const ok = await initFirebase(fbConfig);
     if (ok) store.useFirebase = true;
   }
 
@@ -997,7 +997,7 @@ async function wizardFinish() {
   if (btn) { btn.disabled = true; btn.textContent = 'Verbinde...'; }
 
   try {
-    const success = initFirebase(config);
+    const success = await initFirebase(config);
     if (!success) {
       showAuthError(errorEl, 'Firebase Verbindung fehlgeschlagen – bitte Daten prüfen');
       return;
@@ -1416,7 +1416,7 @@ async function connectFirebase() {
     return;
   }
 
-  const success = initFirebase(config);
+  const success = await initFirebase(config);
   if (success) {
     await window.api.saveFirebaseConfig(config);
     store.useFirebase = true;
