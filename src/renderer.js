@@ -1998,6 +1998,7 @@ async function deleteExpense(id) {
   if (!confirm('Ausgabe wirklich löschen?')) return;
   await store.deleteExpense(id);
   renderExpensesList();
+  renderTeamsList();
   showToast('Ausgabe gelöscht');
 }
 
@@ -2027,6 +2028,7 @@ async function saveExpense() {
 
   closeExpenseModal();
   renderExpensesList();
+  renderTeamsList();
 }
 
 function filterExpenses() {
@@ -2045,7 +2047,7 @@ let teams = [];
 async function loadTeams() {
   if (store.useFirebase && db) {
     try {
-      const snapshot = await db.collection('teams').get();
+      const snapshot = await store._col('teams').get();
       teams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     } catch (e) { console.warn('Teams load failed:', e); }
   }
@@ -2123,7 +2125,7 @@ async function saveTeam() {
   };
 
   try {
-    const docRef = await db.collection('teams').add(team);
+    const docRef = await store._col('teams').add(team);
     team.id = docRef.id;
     teams.push(team);
     renderTeamsList();
@@ -2150,9 +2152,10 @@ function showTeamLink(teamId) {
     appId: config.appId,
   }));
 
-  // URL bauen (GitHub Pages)
+  // URL bauen (GitHub Pages) — mit orgId für org-scoped Teams
   const baseUrl = 'https://malikk065.github.io/Zakflow/docs/team.html';
-  const url = `${baseUrl}?t=${teamId}&c=${encodedConfig}`;
+  const orgParam = store.currentOrgId ? `&o=${store.currentOrgId}` : '';
+  const url = `${baseUrl}?t=${teamId}&c=${encodedConfig}${orgParam}`;
 
   document.getElementById('team-link-url').value = url;
   document.getElementById('team-link-modal').classList.add('active');
@@ -2179,7 +2182,7 @@ async function deleteTeam(id) {
   if (!confirm(`Team "${team ? team.name : ''}" wirklich löschen? Die Ausgaben bleiben erhalten.`)) return;
 
   try {
-    await db.collection('teams').doc(id).delete();
+    await store._col('teams').doc(id).delete();
     teams = teams.filter(t => t.id !== id);
     renderTeamsList();
     updateTeamFilter();
@@ -2677,6 +2680,7 @@ async function loadAllOrgsData() {
   store.customers = [];
   store.invoices = [];
   store.expenses = [];
+  teams = [];
 
   for (const org of store.allOrgs) {
     try {
@@ -2688,6 +2692,9 @@ async function loadAllOrgsData() {
 
       const exps = await db.collection('orgs').doc(org.id).collection('expenses').get();
       exps.docs.forEach(doc => store.expenses.push({ id: doc.id, ...doc.data(), _orgId: org.id, _orgName: org.name }));
+
+      const tms = await db.collection('orgs').doc(org.id).collection('teams').get();
+      tms.docs.forEach(doc => teams.push({ id: doc.id, ...doc.data(), _orgId: org.id, _orgName: org.name }));
     } catch (e) {
       console.warn(`Fehler beim Laden von Org ${org.name}:`, e);
     }
