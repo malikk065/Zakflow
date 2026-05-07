@@ -1075,6 +1075,22 @@ async function wizardFinish() {
     await window.api.saveFirebaseConfig(config);
     store.useFirebase = true;
 
+    // Auth-Listener registrieren (wurde beim Wizard-Flow nicht gesetzt)
+    auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        try {
+          document.getElementById('auth-overlay').style.display = 'none';
+          await initApp();
+        } catch (err) {
+          console.error('initApp Fehler:', err);
+          showToast('Fehler beim Laden: ' + err.message, 'error');
+        }
+      } else {
+        document.getElementById('auth-overlay').style.display = 'flex';
+        showAuthLogin();
+      }
+    });
+
     // Wizard ausblenden, Register zeigen
     document.getElementById('setup-wizard').style.display = 'none';
     showAuthRegister();
@@ -2908,6 +2924,22 @@ async function joinWithInvite() {
     // Config speichern
     await window.api.saveFirebaseConfig(inviteData.c);
     store.useFirebase = true;
+
+    // Auth-Listener registrieren (wurde beim Wizard-Flow nicht gesetzt)
+    auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        try {
+          document.getElementById('auth-overlay').style.display = 'none';
+          await initApp();
+        } catch (err) {
+          console.error('initApp Fehler:', err);
+          showToast('Fehler beim Laden: ' + err.message, 'error');
+        }
+      } else {
+        document.getElementById('auth-overlay').style.display = 'flex';
+        showAuthLogin();
+      }
+    });
 
     // Org-ID merken für nach der Registrierung
     window._pendingInviteOrgId = inviteData.o;

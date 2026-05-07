@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -142,6 +142,11 @@ function createWindow() {
   if (process.platform === 'darwin') {
     windowOptions.titleBarStyle = 'hiddenInset';
     windowOptions.trafficLightPosition = { x: 15, y: 15 };
+  }
+
+  // Windows/Linux: Menüleiste (File, Edit, View...) entfernen
+  if (process.platform !== 'darwin') {
+    Menu.setApplicationMenu(null);
   }
 
   mainWindow = new BrowserWindow(windowOptions);
