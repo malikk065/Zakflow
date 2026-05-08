@@ -593,3 +593,343 @@ function wrapText(text, font, fontSize, maxWidth) {
   if (currentLine) lines.push(currentLine);
   return lines;
 }
+
+
+// =============================================
+// Zuwendungsbestätigung (Spendenquittung) PDF
+// =============================================
+
+function numberToWordsDE(num) {
+  const ones = ['', 'ein', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun',
+    'zehn', 'elf', 'zwölf', 'dreizehn', 'vierzehn', 'fünfzehn', 'sechzehn', 'siebzehn', 'achtzehn', 'neunzehn'];
+  const tens = ['', '', 'zwanzig', 'dreißig', 'vierzig', 'fünfzig', 'sechzig', 'siebzig', 'achtzig', 'neunzig'];
+
+  if (num === 0) return 'null';
+  if (num < 0) return 'minus ' + numberToWordsDE(-num);
+
+  let words = '';
+  if (num >= 1000000) {
+    const millions = Math.floor(num / 1000000);
+    words += (millions === 1 ? 'eine Million ' : numberToWordsDE(millions) + ' Millionen ');
+    num %= 1000000;
+  }
+  if (num >= 1000) {
+    const thousands = Math.floor(num / 1000);
+    words += (thousands === 1 ? 'eintausend' : numberToWordsDE(thousands) + 'tausend');
+    num %= 1000;
+  }
+  if (num >= 100) {
+    words += ones[Math.floor(num / 100)] + 'hundert';
+    num %= 100;
+  }
+  if (num >= 20) {
+    const o = num % 10;
+    if (o > 0) words += ones[o] + 'und';
+    words += tens[Math.floor(num / 10)];
+  } else if (num > 0) {
+    words += ones[num];
+  }
+
+  return words.trim();
+}
+
+function amountToWordsDE(amount) {
+  const euros = Math.floor(amount);
+  const cents = Math.round((amount - euros) * 100);
+  let result = numberToWordsDE(euros);
+  // Capitalize first letter
+  result = result.charAt(0).toUpperCase() + result.slice(1);
+  if (cents > 0) {
+    result += ' Euro und ' + numberToWordsDE(cents) + ' Cent';
+  } else {
+    result += ' Euro';
+  }
+  return '- ' + result + ' -';
+}
+
+async function generateDonationReceiptPDF({ donations, settings, logoData, isSammel = false, year }) {
+  const { PDFDocument, rgb, StandardFonts } = PDFLib;
+
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595.28, 841.89]); // A4
+  const { width, height } = page.getSize();
+
+  const fontRegular = await doc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+
+  const black = rgb(0.1, 0.1, 0.12);
+  const gray = rgb(0.35, 0.35, 0.4);
+  const lightGray = rgb(0.85, 0.85, 0.88);
+
+  const ml = 50; // margin left
+  const mr = 50;
+  const cw = width - ml - mr; // content width
+  let y = height - 50;
+
+  // --- Helper ---
+  function drawText(text, x, yPos, opts = {}) {
+    const font = opts.bold ? fontBold : fontRegular;
+    const size = opts.size || 9;
+    const color = opts.color || black;
+    page.drawText(text || '', { x, y: yPos, size, font, color });
+    return yPos;
+  }
+
+  function drawLine(x1, yPos, x2) {
+    page.drawLine({ start: { x: x1, y: yPos }, end: { x: x2, y: yPos }, thickness: 0.5, color: lightGray });
+  }
+
+  // Get company/org info
+  const company = settings.company || {};
+  const orgName = company.name || 'Verein';
+
+  // Total amount
+  const totalAmount = donations.reduce((s, d) => s + (d.amount || 0), 0);
+
+  // Donor info (from first donation)
+  const donor = donations[0] || {};
+  const donorName = donor.donorName || '';
+  const donorAddress = [donor.donorAddress, [donor.donorZip, donor.donorCity].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+
+  // =====================
+  // HEADER — Logo + Vereinsdaten
+  // =====================
+  if (logoData && logoData.data) {
+    try {
+      let logoImage;
+      if (logoData.mimeType.includes('png')) {
+        logoImage = await doc.embedPng(Uint8Array.from(atob(logoData.data), c => c.charCodeAt(0)));
+      } else if (logoData.mimeType.includes('jpeg') || logoData.mimeType.includes('jpg')) {
+        logoImage = await doc.embedJpg(Uint8Array.from(atob(logoData.data), c => c.charCodeAt(0)));
+      }
+      if (logoImage) {
+        const dims = logoImage.scale(1);
+        const maxH = 50;
+        const maxW = 120;
+        const scale = Math.min(maxW / dims.width, maxH / dims.height, 1);
+        page.drawImage(logoImage, { x: ml, y: y - dims.height * scale, width: dims.width * scale, height: dims.height * scale });
+      }
+    } catch (e) { console.warn('Logo embed error:', e); }
+  }
+
+  // Vereinsname rechts
+  const orgNameWidth = fontBold.widthOfTextAtSize(orgName, 11);
+  drawText(orgName, width - mr - orgNameWidth, y - 10, { bold: true, size: 11 });
+
+  // Vereinsadresse rechts
+  const addressParts = [company.address, [company.zip, company.city].filter(Boolean).join(' ')].filter(Boolean);
+  let addrY = y - 24;
+  for (const part of addressParts) {
+    const partWidth = fontRegular.widthOfTextAtSize(part, 8);
+    drawText(part, width - mr - partWidth, addrY, { size: 8, color: gray });
+    addrY -= 11;
+  }
+
+  y -= 80;
+
+  // =====================
+  // TITLE
+  // =====================
+  const titleText = isSammel
+    ? 'Sammelbestätigung über Geldzuwendungen'
+    : (donor.type === 'sach' ? 'Bestätigung über Sachzuwendungen' : 'Bestätigung über Geldzuwendungen');
+
+  const titleWidth = fontBold.widthOfTextAtSize(titleText, 13);
+  drawText(titleText, (width - titleWidth) / 2, y, { bold: true, size: 13 });
+  y -= 14;
+
+  const subtitleText = 'im Sinne des § 10b des Einkommensteuergesetzes';
+  const subtitleWidth = fontRegular.widthOfTextAtSize(subtitleText, 9);
+  drawText(subtitleText, (width - subtitleWidth) / 2, y, { size: 9, color: gray });
+  y -= 10;
+
+  const subtitle2 = 'an eine der in § 5 Abs. 1 Nr. 9 des KStG bezeichneten Körperschaften';
+  const subtitle2Width = fontRegular.widthOfTextAtSize(subtitle2, 8);
+  drawText(subtitle2, (width - subtitle2Width) / 2, y, { size: 8, color: gray });
+  y -= 28;
+
+  // =====================
+  // SPENDER + BETRAG
+  // =====================
+  drawText('Name und Anschrift des Zuwendenden:', ml, y, { size: 8, color: gray });
+  y -= 14;
+  drawText(donorName, ml, y, { bold: true, size: 10 });
+  y -= 13;
+  if (donorAddress) {
+    drawText(donorAddress, ml, y, { size: 9 });
+    y -= 18;
+  } else {
+    y -= 5;
+  }
+
+  // Betrag
+  drawLine(ml, y, width - mr);
+  y -= 16;
+
+  if (isSammel) {
+    drawText('Gesamtsumme der Zuwendungen:', ml, y, { size: 8, color: gray });
+    y -= 14;
+    drawText(formatCurrency(totalAmount), ml, y, { bold: true, size: 14 });
+
+    const wordsText = amountToWordsDE(totalAmount);
+    const wordsWidth = fontRegular.widthOfTextAtSize(wordsText, 9);
+    drawText(wordsText, ml + 130, y + 1, { size: 9, color: gray });
+    y -= 16;
+
+    const periodText = `Zeitraum der Sammelbestätigung: 01.01.${year} – 31.12.${year}`;
+    drawText(periodText, ml, y, { size: 9 });
+    y -= 20;
+  } else {
+    drawText('Betrag der Zuwendung:', ml, y, { size: 8, color: gray });
+    drawText('Tag der Zuwendung:', ml + 280, y, { size: 8, color: gray });
+    y -= 14;
+    drawText(formatCurrency(totalAmount), ml, y, { bold: true, size: 14 });
+    drawText(formatDate(donor.date), ml + 280, y, { size: 10 });
+    y -= 16;
+
+    const wordsText = amountToWordsDE(totalAmount);
+    drawText(wordsText, ml, y, { size: 9, color: gray });
+    y -= 20;
+  }
+
+  drawLine(ml, y, width - mr);
+  y -= 16;
+
+  // =====================
+  // ZUWENDUNGSEMPFÄNGER
+  // =====================
+  drawText('Zuwendungsempfänger:', ml, y, { size: 8, color: gray });
+  y -= 14;
+  drawText(orgName, ml, y, { bold: true, size: 10 });
+  y -= 13;
+  const empfAddress = [company.address, [company.zip, company.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  if (empfAddress) {
+    drawText(empfAddress, ml, y, { size: 9 });
+    y -= 18;
+  }
+
+  if (settings.taxNumber) {
+    drawText('Steuernummer: ' + settings.taxNumber, ml, y, { size: 8, color: gray });
+    y -= 12;
+  }
+  if (settings.vatId) {
+    drawText('Finanzamt / USt-IdNr.: ' + settings.vatId, ml, y, { size: 8, color: gray });
+    y -= 12;
+  }
+
+  y -= 8;
+  drawLine(ml, y, width - mr);
+  y -= 18;
+
+  // =====================
+  // RECHTLICHE HINWEISE
+  // =====================
+  const legalTexts = [
+    'Es wird bestätigt, dass die Zuwendung nur zur Förderung ' +
+    (settings.vereinszweck || 'gemeinnütziger, mildtätiger und religiöser Zwecke') +
+    ' (im Sinne der §§ 52 ff. AO) verwendet wird.',
+    '',
+    donor.type === 'sach'
+      ? 'Es handelt sich um den Verzicht auf die Erstattung von Aufwendungen: Nein.'
+      : 'Es handelt sich nicht um den Verzicht auf die Erstattung von Aufwendungen.',
+    '',
+    'Der Zuwendungsempfänger ist durch den Freistellungsbescheid des Finanzamts ' +
+    (settings.finanzamt || '_______________') + ', Steuernummer ' +
+    (settings.taxNumber || '_______________') + ', vom ' +
+    (settings.freistellungsDatum || '_______________') +
+    ' für den letzten Veranlagungszeitraum ' +
+    (settings.veranlagungszeitraum || '_______________') +
+    ' nach § 5 Abs. 1 Nr. 9 des KStG von der Körperschaftsteuer befreit.',
+  ];
+
+  for (const text of legalTexts) {
+    if (!text) { y -= 4; continue; }
+    const lines = wrapText(text, fontRegular, 8.5, cw);
+    for (const line of lines) {
+      drawText(line, ml, y, { size: 8.5 });
+      y -= 12;
+    }
+  }
+
+  y -= 8;
+
+  // =====================
+  // SAMMELBESTÄTIGUNG: Einzelaufstellung
+  // =====================
+  if (isSammel && donations.length > 0) {
+    drawLine(ml, y, width - mr);
+    y -= 16;
+    drawText('Aufstellung der einzelnen Zuwendungen:', ml, y, { bold: true, size: 9 });
+    y -= 18;
+
+    // Table header
+    drawText('Datum', ml, y, { bold: true, size: 8 });
+    drawText('Art', ml + 80, y, { bold: true, size: 8 });
+    drawText('Zweck', ml + 160, y, { bold: true, size: 8 });
+    const betragHeader = 'Betrag';
+    const betragHW = fontBold.widthOfTextAtSize(betragHeader, 8);
+    drawText(betragHeader, width - mr - betragHW, y, { bold: true, size: 8 });
+    y -= 4;
+    drawLine(ml, y, width - mr);
+    y -= 12;
+
+    // Sort by date
+    const sortedDonations = [...donations].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    for (const d of sortedDonations) {
+      if (y < 100) {
+        // Would need new page for very long lists — keep simple for now
+        drawText('... (weitere Einträge)', ml, y, { size: 8, color: gray });
+        y -= 12;
+        break;
+      }
+      drawText(formatDate(d.date), ml, y, { size: 8 });
+      drawText(d.type === 'sach' ? 'Sachspende' : 'Geldspende', ml + 80, y, { size: 8 });
+      drawText((d.purpose || '').substring(0, 40), ml + 160, y, { size: 8 });
+      const amtStr = formatCurrency(d.amount);
+      const amtW = fontRegular.widthOfTextAtSize(amtStr, 8);
+      drawText(amtStr, width - mr - amtW, y, { size: 8 });
+      y -= 14;
+    }
+
+    // Sum line
+    drawLine(ml, y + 4, width - mr);
+    y -= 10;
+    drawText('Gesamt:', ml + 160, y, { bold: true, size: 9 });
+    const totalStr = formatCurrency(totalAmount);
+    const totalW = fontBold.widthOfTextAtSize(totalStr, 9);
+    drawText(totalStr, width - mr - totalW, y, { bold: true, size: 9 });
+    y -= 20;
+  }
+
+  // =====================
+  // HINWEISTEXT
+  // =====================
+  y -= 4;
+  const hinweis = 'Es wird bestätigt, dass es sich bei den Zuwendungen um den Verzicht auf die Erstattung ' +
+    'von Aufwendungen handelt: Nein.';
+  // Small legal footnote
+  const footnote = 'Wer vorsätzlich oder grob fahrlässig eine unrichtige Zuwendungsbestätigung erstellt oder veranlasst, ' +
+    'dass Zuwendungen nicht zu den in der Zuwendungsbestätigung angegebenen steuerbegünstigten Zwecken ' +
+    'verwendet werden, haftet für die entgangene Steuer (§ 10b Abs. 4 EStG, § 9 Abs. 3 KStG, § 9 Nr. 5 GewStG).';
+
+  const fnLines = wrapText(footnote, fontRegular, 7, cw);
+  for (const line of fnLines) {
+    drawText(line, ml, y, { size: 7, color: gray });
+    y -= 10;
+  }
+
+  // =====================
+  // UNTERSCHRIFT
+  // =====================
+  y -= 20;
+  drawText(company.city || '_______________', ml, y, { size: 9 });
+  drawText(', den ' + new Date().toLocaleDateString('de-DE'), ml + fontRegular.widthOfTextAtSize(company.city || '_______________', 9) + 2, y, { size: 9 });
+  y -= 30;
+
+  drawLine(ml, y, ml + 200);
+  y -= 12;
+  drawText('Unterschrift des Zuwendungsempfängers', ml, y, { size: 7, color: gray });
+
+  return await doc.save();
+}

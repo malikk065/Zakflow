@@ -36,6 +36,10 @@ contextBridge.exposeInMainWorld('api', {
   getExpenses: () => ipcRenderer.invoke('expenses:getAll'),
   saveExpenses: (expenses) => ipcRenderer.invoke('expenses:save', expenses),
 
+  // Donations
+  getDonations: () => ipcRenderer.invoke('donations:getAll'),
+  saveDonations: (donations) => ipcRenderer.invoke('donations:save', donations),
+
   // Saved Items
   getSavedItems: () => ipcRenderer.invoke('savedItems:getAll'),
   saveSavedItems: (items) => ipcRenderer.invoke('savedItems:save', items),

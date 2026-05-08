@@ -234,6 +234,10 @@
           <span class="nav-icon">&#128200;</span>
           <span>Finanzen</span>
         </li>
+        <li class="nav-item" data-tab="donations">
+          <span class="nav-icon">🤲</span>
+          <span>Spenden</span>
+        </li>
         <li class="nav-item" data-tab="orgs" id="nav-orgs" style="display:none;">
           <span class="nav-icon">&#127970;</span>
           <span>Vereine</span>
@@ -702,6 +706,165 @@
         <div id="expense-categories-chart"></div>
       </section>
 
+      <!-- Spenden -->
+      <section id="tab-donations" class="tab-content">
+        <div class="tab-header">
+          <h2>Spenden & Quittungen</h2>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary" onclick="showDonationForm()">+ Neue Spende</button>
+            <button class="btn" onclick="showSammelquittungDialog()">📄 Sammelbestätigung</button>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-grid" style="margin-bottom:24px;">
+          <div class="stat-card">
+            <span class="stat-value" id="stat-donations-count">0</span>
+            <span class="stat-label">Spenden gesamt</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-donations-total">0,00 €</span>
+            <span class="stat-label">Gesamtbetrag</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-donations-year">0,00 €</span>
+            <span class="stat-label">Dieses Jahr</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-donors-count">0</span>
+            <span class="stat-label">Spender</span>
+          </div>
+        </div>
+
+        <!-- Filter -->
+        <div class="filter-row" style="margin-bottom:16px;">
+          <input type="text" id="search-donations" placeholder="Suche nach Spender, Zweck..." oninput="filterDonations()" style="flex:1;">
+          <select id="filter-donation-year" onchange="renderDonationsList()" style="width:140px;">
+            <option value="">Alle Jahre</option>
+          </select>
+          <select id="filter-donation-type" onchange="renderDonationsList()" style="width:160px;">
+            <option value="">Alle Arten</option>
+            <option value="geld">Geldspende</option>
+            <option value="sach">Sachspende</option>
+          </select>
+        </div>
+
+        <!-- Table -->
+        <div id="donations-empty" class="empty-state">
+          <p>Noch keine Spenden erfasst.</p>
+          <p style="color:var(--text-tertiary);">Erfasse Spenden und erstelle Zuwendungsbestätigungen für deine Spender.</p>
+        </div>
+        <table class="data-table" id="donations-table" style="display:none;">
+          <thead>
+            <tr>
+              <th>Nr.</th>
+              <th>Datum</th>
+              <th>Spender</th>
+              <th>Betrag</th>
+              <th>Art</th>
+              <th>Zweck</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody id="donations-tbody"></tbody>
+        </table>
+
+        <!-- Donation Modal -->
+        <div class="modal" id="donation-modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3 id="donation-modal-title">Neue Spende erfassen</h3>
+              <button class="btn-close" onclick="closeDonationModal()">&times;</button>
+            </div>
+            <form id="donation-form">
+              <input type="hidden" id="donation-edit-id">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Datum *</label>
+                  <input type="date" id="donation-date" required>
+                </div>
+                <div class="form-group">
+                  <label>Art der Zuwendung</label>
+                  <select id="donation-type">
+                    <option value="geld">Geldspende</option>
+                    <option value="sach">Sachspende</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Betrag (€) *</label>
+                  <input type="number" id="donation-amount" step="0.01" min="0" required placeholder="0,00">
+                </div>
+                <div class="form-group">
+                  <label>Zweck</label>
+                  <input type="text" id="donation-purpose" placeholder="z.B. Allgemeine Spende, Moscheebau...">
+                </div>
+              </div>
+
+              <h4 style="margin-top:16px;margin-bottom:8px;font-size:14px;">Spender-Daten</h4>
+              <div class="form-group">
+                <label>Name des Spenders *</label>
+                <input type="text" id="donation-donor-name" required placeholder="Vor- und Nachname">
+              </div>
+              <div class="form-group">
+                <label>Straße + Nr.</label>
+                <input type="text" id="donation-donor-address" placeholder="Musterstraße 1">
+              </div>
+              <div class="form-row">
+                <div class="form-group" style="flex:0.3">
+                  <label>PLZ</label>
+                  <input type="text" id="donation-donor-zip" placeholder="12345">
+                </div>
+                <div class="form-group">
+                  <label>Ort</label>
+                  <input type="text" id="donation-donor-city" placeholder="Musterstadt">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Bemerkung (intern)</label>
+                <input type="text" id="donation-notes" placeholder="Interne Notiz...">
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Spende speichern</button>
+                <button type="button" class="btn btn-ghost" onclick="closeDonationModal()">Abbrechen</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Sammelquittung Modal -->
+        <div class="modal" id="sammelquittung-modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3>Sammelbestätigung erstellen</h3>
+              <button class="btn-close" onclick="closeSammelquittungModal()">&times;</button>
+            </div>
+            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">Alle Spenden eines Spenders in einem Kalenderjahr als eine Zuwendungsbestätigung.</p>
+            <div class="form-group">
+              <label>Spender auswählen *</label>
+              <select id="sammel-donor" onchange="updateSammelPreview()">
+                <option value="">Bitte wählen...</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Jahr *</label>
+              <select id="sammel-year" onchange="updateSammelPreview()"></select>
+            </div>
+            <div id="sammel-preview" style="margin-top:12px;padding:12px;background:var(--bg-secondary);border-radius:var(--radius);display:none;">
+              <p style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">Vorschau:</p>
+              <p><strong id="sammel-count">0</strong> Spenden — Gesamt: <strong id="sammel-total">0,00 €</strong></p>
+            </div>
+            <div class="form-actions" style="margin-top:16px;">
+              <button type="button" class="btn btn-primary" onclick="generateSammelquittung()">PDF erstellen</button>
+              <button type="button" class="btn btn-ghost" onclick="closeSammelquittungModal()">Abbrechen</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Vereine (Admin) -->
       <section id="tab-orgs" class="tab-content">
         <div class="tab-header">
@@ -832,6 +995,29 @@
               <option value="kleinunternehmer">Kleinunternehmer (§19 UStG) - keine MwSt</option>
               <option value="regelbesteuerung">Regelbesteuerung - MwSt ausweisen</option>
             </select>
+          </div>
+
+          <h3>Spendenquittung</h3>
+          <p style="color:var(--text-secondary);font-size:12px;margin-bottom:12px;">Angaben für die Zuwendungsbestätigung (§10b EStG).</p>
+          <div class="form-group">
+            <label>Vereinszweck</label>
+            <input type="text" id="settings-vereinszweck" placeholder="z.B. Förderung religiöser Zwecke gemäß § 52 Abs. 2 Nr. 1 AO">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Finanzamt</label>
+              <input type="text" id="settings-finanzamt" placeholder="z.B. Finanzamt Köln-Süd">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Freistellungsbescheid vom</label>
+              <input type="text" id="settings-freistellungsdatum" placeholder="z.B. 01.03.2024">
+            </div>
+            <div class="form-group">
+              <label>Veranlagungszeitraum</label>
+              <input type="text" id="settings-veranlagungszeitraum" placeholder="z.B. 2022">
+            </div>
           </div>
 
           <h3>Bankverbindung</h3>

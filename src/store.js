@@ -6,6 +6,7 @@ class Store {
     this.customers = [];
     this.invoices = [];
     this.expenses = [];
+    this.donations = [];
     this.useFirebase = false;
     this.isElectron = typeof window.api !== 'undefined';
     this._listeners = [];
@@ -142,6 +143,7 @@ class Store {
     await this.loadCustomers();
     await this.loadInvoices();
     await this.loadExpenses();
+    await this.loadDonations();
     this.startRealtimeSync();
   }
 
@@ -225,6 +227,13 @@ class Store {
       if (this.onDataChanged) this.onDataChanged('expenses');
     }, err => console.warn('Ausgaben-Listener Fehler:', err));
     this._listeners.push(unsubExpenses);
+
+    // Spenden-Listener
+    const unsubDonations = this._col('donations').onSnapshot(snapshot => {
+      this.donations = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (this.onDataChanged) this.onDataChanged('donations');
+    }, err => console.warn('Spenden-Listener Fehler:', err));
+    this._listeners.push(unsubDonations);
 
     // Settings-Listener
     const unsubSettings = this._settingsDoc().onSnapshot(doc => {
@@ -524,6 +533,88 @@ class Store {
 
   getExpense(id) {
     return this.expenses.find(e => e.id === id) || null;
+  }
+
+  // --- Spenden (Donations) ---
+  async loadDonations() {
+    if (this.useFirebase) {
+      try {
+        const snapshot = await this._col('donations').get();
+        if (!snapshot.empty) {
+          this.donations = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          return this.donations;
+        }
+      } catch (e) { console.warn('Firebase donations load failed:', e); }
+    }
+
+    if (this.isElectron) {
+      this.donations = await window.api.getDonations();
+    }
+    return this.donations;
+  }
+
+  async saveDonations() {
+    if (this.isElectron) {
+      await window.api.saveDonations(this.donations);
+    }
+  }
+
+  async addDonation(donation) {
+    donation.id = this.generateId();
+    donation.createdAt = new Date().toISOString();
+    this.donations.push(donation);
+
+    if (this.useFirebase) {
+      try {
+        await this._col('donations').doc(donation.id).set(donation);
+      } catch (e) { console.warn('Firebase donation add failed:', e); }
+    }
+
+    if (this.isElectron) await this.saveDonations();
+    return donation;
+  }
+
+  async updateDonation(id, data) {
+    const index = this.donations.findIndex(d => d.id === id);
+    if (index !== -1) {
+      this.donations[index] = { ...this.donations[index], ...data };
+
+      if (this.useFirebase) {
+        try {
+          await this._col('donations').doc(id).update(data);
+        } catch (e) { console.warn('Firebase donation update failed:', e); }
+      }
+
+      if (this.isElectron) await this.saveDonations();
+      return this.donations[index];
+    }
+    return null;
+  }
+
+  async deleteDonation(id) {
+    this.donations = this.donations.filter(d => d.id !== id);
+
+    if (this.useFirebase) {
+      try {
+        await this._col('donations').doc(id).delete();
+      } catch (e) { console.warn('Firebase donation delete failed:', e); }
+    }
+
+    if (this.isElectron) await this.saveDonations();
+  }
+
+  getDonation(id) {
+    return this.donations.find(d => d.id === id) || null;
+  }
+
+  getNextDonationNumber(prefix = 'SQ') {
+    const year = new Date().getFullYear();
+    const yearDonations = this.donations.filter(d => {
+      const num = d.number || '';
+      return num.includes(`${year}`);
+    });
+    const nextNum = yearDonations.length + 1;
+    return `${prefix}-${year}-${String(nextNum).padStart(3, '0')}`;
   }
 
   // --- Helpers ---

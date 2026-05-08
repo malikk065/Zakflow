@@ -159,6 +159,7 @@ async function initApp() {
   await store.loadCustomers();
   await store.loadInvoices();
   await store.loadExpenses();
+  await store.loadDonations();
   savedItems = await window.api.getSavedItems() || [];
 
   // Lokale Daten nach Firebase synchronisieren
@@ -176,6 +177,9 @@ async function initApp() {
     if (type === 'expenses') {
       renderExpensesList();
     }
+    if (type === 'donations') {
+      renderDonationsList();
+    }
     if (type === 'settings') {
       loadExpenseCategories();
       renderSettingsForm();
@@ -190,6 +194,8 @@ async function initApp() {
   renderDashboard();
   renderCustomersList();
   renderExpensesList();
+  renderDonationsList();
+  initDonationYearFilter();
   await loadTeams();
   renderSettingsForm();
   renderExpenseCategoriesSettings();
@@ -294,6 +300,7 @@ function switchTab(tabName) {
   if (tabName === 'dashboard') renderDashboard();
   if (tabName === 'customers') renderCustomersList();
   if (tabName === 'expenses') renderExpensesList();
+  if (tabName === 'donations') renderDonationsList();
   if (tabName === 'finances') { initFinanceYearSelect(); renderFinances(); }
   if (tabName === 'new-invoice') updateInvoiceForm();
   if (tabName === 'orgs') renderOrgsList();
@@ -612,6 +619,12 @@ function setupForms() {
     await saveExpense();
   });
 
+  // Donation form
+  document.getElementById('donation-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await saveDonation();
+  });
+
   // Team form
   document.getElementById('team-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -892,6 +905,12 @@ async function renderSettingsForm() {
   document.getElementById('settings-invoice-prefix').value = s.invoicePrefix || 'RE';
   document.getElementById('settings-next-number').value = s.nextInvoiceNumber || 1;
 
+  // Spendenquittung-Felder
+  document.getElementById('settings-vereinszweck').value = s.vereinszweck || '';
+  document.getElementById('settings-finanzamt').value = s.finanzamt || '';
+  document.getElementById('settings-freistellungsdatum').value = s.freistellungsDatum || '';
+  document.getElementById('settings-veranlagungszeitraum').value = s.veranlagungszeitraum || '';
+
   // Data path
   const dataPath = await window.api.getDataPath();
   document.getElementById('settings-data-path').value = dataPath;
@@ -973,7 +992,17 @@ async function saveSettingsForm() {
     invoicePrefix: document.getElementById('settings-invoice-prefix').value.trim() || 'RE',
     nextInvoiceNumber: parseInt(document.getElementById('settings-next-number').value) || 1,
     logoPath: store.settings.logoPath || '',
+    // Spendenquittung
+    vereinszweck: document.getElementById('settings-vereinszweck').value.trim(),
+    finanzamt: document.getElementById('settings-finanzamt').value.trim(),
+    freistellungsDatum: document.getElementById('settings-freistellungsdatum').value.trim(),
+    veranlagungszeitraum: document.getElementById('settings-veranlagungszeitraum').value.trim(),
   };
+
+  // Ausgaben-Kategorien beibehalten
+  if (store.settings && store.settings.expenseCategories) {
+    settings.expenseCategories = store.settings.expenseCategories;
+  }
 
   await store.saveSettings(settings);
   showToast('Einstellungen gespeichert', 'success');
@@ -2056,6 +2085,267 @@ function filterExpenses() {
 }
 
 // ==========================
+// SPENDEN (Donations)
+// ==========================
+
+function showDonationForm(editId) {
+  const modal = document.getElementById('donation-modal');
+  const title = document.getElementById('donation-modal-title');
+  document.getElementById('donation-edit-id').value = editId || '';
+
+  if (editId) {
+    title.textContent = 'Spende bearbeiten';
+    const d = store.getDonation(editId);
+    if (d) {
+      document.getElementById('donation-date').value = d.date || '';
+      document.getElementById('donation-type').value = d.type || 'geld';
+      document.getElementById('donation-amount').value = d.amount || '';
+      document.getElementById('donation-purpose').value = d.purpose || '';
+      document.getElementById('donation-donor-name').value = d.donorName || '';
+      document.getElementById('donation-donor-address').value = d.donorAddress || '';
+      document.getElementById('donation-donor-zip').value = d.donorZip || '';
+      document.getElementById('donation-donor-city').value = d.donorCity || '';
+      document.getElementById('donation-notes').value = d.notes || '';
+    }
+  } else {
+    title.textContent = 'Neue Spende erfassen';
+    document.getElementById('donation-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('donation-type').value = 'geld';
+    document.getElementById('donation-amount').value = '';
+    document.getElementById('donation-purpose').value = '';
+    document.getElementById('donation-donor-name').value = '';
+    document.getElementById('donation-donor-address').value = '';
+    document.getElementById('donation-donor-zip').value = '';
+    document.getElementById('donation-donor-city').value = '';
+    document.getElementById('donation-notes').value = '';
+  }
+
+  modal.classList.add('active');
+}
+
+function closeDonationModal() {
+  document.getElementById('donation-modal').classList.remove('active');
+}
+
+async function saveDonation() {
+  const editId = document.getElementById('donation-edit-id').value;
+  const data = {
+    date: document.getElementById('donation-date').value,
+    type: document.getElementById('donation-type').value,
+    amount: parseFloat(document.getElementById('donation-amount').value) || 0,
+    purpose: document.getElementById('donation-purpose').value.trim(),
+    donorName: document.getElementById('donation-donor-name').value.trim(),
+    donorAddress: document.getElementById('donation-donor-address').value.trim(),
+    donorZip: document.getElementById('donation-donor-zip').value.trim(),
+    donorCity: document.getElementById('donation-donor-city').value.trim(),
+    notes: document.getElementById('donation-notes').value.trim(),
+  };
+
+  if (!data.donorName || !data.amount) {
+    showToast('Bitte Spendername und Betrag eingeben', 'error');
+    return;
+  }
+
+  if (editId) {
+    await store.updateDonation(editId, data);
+    showToast('Spende aktualisiert', 'success');
+  } else {
+    data.number = store.getNextDonationNumber('SQ');
+    await store.addDonation(data);
+    showToast('Spende erfasst', 'success');
+  }
+
+  closeDonationModal();
+  renderDonationsList();
+}
+
+async function deleteDonation(id) {
+  if (!confirm('Spende wirklich löschen?')) return;
+  await store.deleteDonation(id);
+  renderDonationsList();
+  showToast('Spende gelöscht');
+}
+
+function renderDonationsList() {
+  const tbody = document.getElementById('donations-tbody');
+  const empty = document.getElementById('donations-empty');
+  const table = document.getElementById('donations-table');
+  if (!tbody) return;
+
+  const yearFilter = document.getElementById('filter-donation-year').value;
+  const typeFilter = document.getElementById('filter-donation-type').value;
+
+  let donations = [...store.donations];
+
+  if (yearFilter) {
+    donations = donations.filter(d => new Date(d.date).getFullYear().toString() === yearFilter);
+  }
+  if (typeFilter) {
+    donations = donations.filter(d => d.type === typeFilter);
+  }
+
+  // Stats
+  const now = new Date();
+  const allTotal = store.donations.reduce((s, d) => s + (d.amount || 0), 0);
+  const yearTotal = store.donations
+    .filter(d => new Date(d.date).getFullYear() === now.getFullYear())
+    .reduce((s, d) => s + (d.amount || 0), 0);
+  const uniqueDonors = new Set(store.donations.map(d => d.donorName)).size;
+
+  document.getElementById('stat-donations-count').textContent = store.donations.length;
+  document.getElementById('stat-donations-total').textContent = formatCurrency(allTotal);
+  document.getElementById('stat-donations-year').textContent = formatCurrency(yearTotal);
+  document.getElementById('stat-donors-count').textContent = uniqueDonors;
+
+  if (donations.length === 0) {
+    table.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+
+  table.style.display = '';
+  empty.style.display = 'none';
+
+  const sorted = [...donations].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  tbody.innerHTML = sorted.map(d => `
+    <tr>
+      <td><strong>${d.number || '—'}</strong></td>
+      <td>${formatDate(d.date)}</td>
+      <td>${escapeHtml(d.donorName)}</td>
+      <td>${formatCurrency(d.amount)}</td>
+      <td><span class="badge ${d.type === 'sach' ? 'badge-cancelled' : 'badge-paid'}">${d.type === 'sach' ? 'Sachspende' : 'Geldspende'}</span></td>
+      <td>${escapeHtml(d.purpose || '—')}</td>
+      <td>
+        <button class="btn-icon" title="Quittung PDF" onclick="exportDonationPDF('${d.id}')">📄</button>
+        <button class="btn-icon" title="Bearbeiten" onclick="showDonationForm('${d.id}')">✏️</button>
+        <button class="btn-icon" title="Löschen" onclick="deleteDonation('${d.id}')">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function filterDonations() {
+  const query = document.getElementById('search-donations').value.toLowerCase().trim();
+  const rows = document.querySelectorAll('#donations-tbody tr');
+  rows.forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(query) ? '' : 'none';
+  });
+}
+
+function initDonationYearFilter() {
+  const select = document.getElementById('filter-donation-year');
+  if (!select) return;
+  const years = new Set(store.donations.map(d => new Date(d.date).getFullYear()));
+  const currentYear = new Date().getFullYear();
+  years.add(currentYear);
+  const sorted = [...years].sort((a, b) => b - a);
+  select.innerHTML = '<option value="">Alle Jahre</option>' +
+    sorted.map(y => `<option value="${y}">${y}</option>`).join('');
+}
+
+// --- Sammelquittung ---
+function showSammelquittungDialog() {
+  const donors = [...new Set(store.donations.map(d => d.donorName))].filter(Boolean).sort();
+  const years = [...new Set(store.donations.map(d => new Date(d.date).getFullYear()))].sort((a, b) => b - a);
+  const currentYear = new Date().getFullYear();
+  if (!years.includes(currentYear)) years.unshift(currentYear);
+
+  const donorSelect = document.getElementById('sammel-donor');
+  donorSelect.innerHTML = '<option value="">Bitte wählen...</option>' +
+    donors.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('');
+
+  const yearSelect = document.getElementById('sammel-year');
+  yearSelect.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+
+  document.getElementById('sammel-preview').style.display = 'none';
+  document.getElementById('sammelquittung-modal').classList.add('active');
+}
+
+function closeSammelquittungModal() {
+  document.getElementById('sammelquittung-modal').classList.remove('active');
+}
+
+function updateSammelPreview() {
+  const donor = document.getElementById('sammel-donor').value;
+  const year = parseInt(document.getElementById('sammel-year').value);
+  const preview = document.getElementById('sammel-preview');
+
+  if (!donor) { preview.style.display = 'none'; return; }
+
+  const matching = store.donations.filter(d =>
+    d.donorName === donor && new Date(d.date).getFullYear() === year
+  );
+
+  const total = matching.reduce((s, d) => s + (d.amount || 0), 0);
+  document.getElementById('sammel-count').textContent = matching.length;
+  document.getElementById('sammel-total').textContent = formatCurrency(total);
+  preview.style.display = matching.length > 0 ? '' : 'none';
+}
+
+async function generateSammelquittung() {
+  const donor = document.getElementById('sammel-donor').value;
+  const year = parseInt(document.getElementById('sammel-year').value);
+
+  if (!donor) { showToast('Bitte einen Spender auswählen', 'error'); return; }
+
+  const donations = store.donations.filter(d =>
+    d.donorName === donor && new Date(d.date).getFullYear() === year
+  );
+
+  if (donations.length === 0) { showToast('Keine Spenden für diesen Zeitraum gefunden', 'error'); return; }
+
+  try {
+    const settings = store.settings || {};
+    let logoData = null;
+    const logoPath = await window.api.getLogo();
+    if (logoPath) logoData = await window.api.readLogoBase64(logoPath);
+
+    const pdfBytes = await generateDonationReceiptPDF({
+      donations,
+      settings,
+      logoData,
+      isSammel: true,
+      year,
+    });
+
+    const fileName = `Sammelbestätigung_${donor.replace(/[^a-zA-Z0-9äöüÄÖÜß]/g, '_')}_${year}`;
+    await window.api.saveAutoPDF(pdfBytes, fileName);
+    showToast(`Sammelbestätigung für ${donor} erstellt`, 'success');
+    closeSammelquittungModal();
+  } catch (err) {
+    console.error('Sammelquittung Fehler:', err);
+    showToast('Fehler beim Erstellen: ' + err.message, 'error');
+  }
+}
+
+async function exportDonationPDF(donationId) {
+  const donation = store.getDonation(donationId);
+  if (!donation) return;
+
+  try {
+    const settings = store.settings || {};
+    let logoData = null;
+    const logoPath = await window.api.getLogo();
+    if (logoPath) logoData = await window.api.readLogoBase64(logoPath);
+
+    const pdfBytes = await generateDonationReceiptPDF({
+      donations: [donation],
+      settings,
+      logoData,
+      isSammel: false,
+    });
+
+    const fileName = donation.number || `Spendenquittung_${donation.donorName}`;
+    await window.api.saveAutoPDF(pdfBytes, fileName.replace(/[^a-zA-Z0-9äöüÄÖÜß_-]/g, '_'));
+    showToast('Spendenquittung als PDF gespeichert', 'success');
+  } catch (err) {
+    console.error('Spendenquittung PDF Fehler:', err);
+    showToast('Fehler: ' + err.message, 'error');
+  }
+}
+
+// ==========================
 // TEAMS
 // ==========================
 let teams = [];
@@ -2680,6 +2970,7 @@ async function switchOrg(orgId) {
   renderDashboard();
   renderCustomersList();
   renderExpensesList();
+  renderDonationsList();
   await loadTeams();
   renderSettingsForm();
   renderExpenseCategoriesSettings();
@@ -2696,6 +2987,7 @@ async function loadAllOrgsData() {
   store.customers = [];
   store.invoices = [];
   store.expenses = [];
+  store.donations = [];
   teams = [];
 
   for (const org of store.allOrgs) {
@@ -2708,6 +3000,9 @@ async function loadAllOrgsData() {
 
       const exps = await db.collection('orgs').doc(org.id).collection('expenses').get();
       exps.docs.forEach(doc => store.expenses.push({ id: doc.id, ...doc.data(), _orgId: org.id, _orgName: org.name }));
+
+      const dons = await db.collection('orgs').doc(org.id).collection('donations').get();
+      dons.docs.forEach(doc => store.donations.push({ id: doc.id, ...doc.data(), _orgId: org.id, _orgName: org.name }));
 
       const tms = await db.collection('orgs').doc(org.id).collection('teams').get();
       tms.docs.forEach(doc => teams.push({ id: doc.id, ...doc.data(), _orgId: org.id, _orgName: org.name }));

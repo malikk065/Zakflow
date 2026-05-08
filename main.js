@@ -384,6 +384,18 @@ ipcMain.handle('expenses:save', (_event, expenses) => {
   return true;
 });
 
+// Donations (Spenden)
+ipcMain.handle('donations:getAll', () => {
+  const filePath = path.join(getDataPath(), 'donations.json');
+  return readJSON(filePath) || [];
+});
+
+ipcMain.handle('donations:save', (_event, donations) => {
+  const filePath = path.join(getDataPath(), 'donations.json');
+  writeJSON(filePath, donations);
+  return true;
+});
+
 // Saved Items (Gespeicherte Positionen)
 ipcMain.handle('savedItems:getAll', () => {
   const filePath = path.join(getDataPath(), 'saved-items.json');
