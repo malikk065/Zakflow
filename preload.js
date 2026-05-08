@@ -40,6 +40,21 @@ contextBridge.exposeInMainWorld('api', {
   getDonations: () => ipcRenderer.invoke('donations:getAll'),
   saveDonations: (donations) => ipcRenderer.invoke('donations:save', donations),
 
+  // Contacts
+  getContacts: () => ipcRenderer.invoke('contacts:getAll'),
+  saveContacts: (contacts) => ipcRenderer.invoke('contacts:save', contacts),
+
+  // Documents
+  getDocuments: () => ipcRenderer.invoke('documents:getAll'),
+  saveDocuments: (documents) => ipcRenderer.invoke('documents:save', documents),
+  uploadDocument: () => ipcRenderer.invoke('documents:upload'),
+  openDocument: (filePath) => ipcRenderer.invoke('documents:open', filePath),
+  deleteDocumentFile: (filePath) => ipcRenderer.invoke('documents:delete', filePath),
+
+  // Events
+  getEvents: () => ipcRenderer.invoke('events:getAll'),
+  saveEvents: (events) => ipcRenderer.invoke('events:save', events),
+
   // Saved Items
   getSavedItems: () => ipcRenderer.invoke('savedItems:getAll'),
   saveSavedItems: (items) => ipcRenderer.invoke('savedItems:save', items),

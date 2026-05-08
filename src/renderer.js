@@ -160,6 +160,9 @@ async function initApp() {
   await store.loadInvoices();
   await store.loadExpenses();
   await store.loadDonations();
+  await store.loadContacts();
+  await store.loadDocuments();
+  await store.loadEvents();
   savedItems = await window.api.getSavedItems() || [];
 
   // Lokale Daten nach Firebase synchronisieren
@@ -180,6 +183,15 @@ async function initApp() {
     if (type === 'donations') {
       renderDonationsList();
     }
+    if (type === 'contacts') {
+      renderContactsList();
+    }
+    if (type === 'documents') {
+      renderDocumentsList();
+    }
+    if (type === 'events') {
+      renderCalendar();
+    }
     if (type === 'settings') {
       loadExpenseCategories();
       renderSettingsForm();
@@ -196,6 +208,9 @@ async function initApp() {
   renderExpensesList();
   renderDonationsList();
   initDonationYearFilter();
+  renderContactsList();
+  renderDocumentsList();
+  renderCalendar();
   await loadTeams();
   renderSettingsForm();
   renderExpenseCategoriesSettings();
@@ -301,6 +316,9 @@ function switchTab(tabName) {
   if (tabName === 'customers') renderCustomersList();
   if (tabName === 'expenses') renderExpensesList();
   if (tabName === 'donations') renderDonationsList();
+  if (tabName === 'contacts') renderContactsList();
+  if (tabName === 'documents') renderDocumentsList();
+  if (tabName === 'calendar') renderCalendar();
   if (tabName === 'finances') { initFinanceYearSelect(); renderFinances(); }
   if (tabName === 'new-invoice') updateInvoiceForm();
   if (tabName === 'orgs') renderOrgsList();
@@ -623,6 +641,18 @@ function setupForms() {
   document.getElementById('donation-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     await saveDonation();
+  });
+
+  // Contact form
+  document.getElementById('contact-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await saveContact();
+  });
+
+  // Event form
+  document.getElementById('event-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await saveEvent();
   });
 
   // Team form
@@ -2346,6 +2376,501 @@ async function exportDonationPDF(donationId) {
 }
 
 // ==========================
+// KONTAKTBUCH (Contacts)
+// ==========================
+
+function showContactForm(editId) {
+  const modal = document.getElementById('contact-modal');
+  const title = document.getElementById('contact-modal-title');
+  document.getElementById('contact-edit-id').value = editId || '';
+
+  if (editId) {
+    title.textContent = 'Kontakt bearbeiten';
+    const c = store.getContact(editId);
+    if (c) {
+      document.getElementById('contact-firstname').value = c.firstName || '';
+      document.getElementById('contact-lastname').value = c.lastName || '';
+      document.getElementById('contact-phone').value = c.phone || '';
+      document.getElementById('contact-email').value = c.email || '';
+      document.getElementById('contact-address').value = c.address || '';
+      document.getElementById('contact-zip').value = c.zip || '';
+      document.getElementById('contact-city').value = c.city || '';
+      document.getElementById('contact-group').value = c.group || '';
+      document.getElementById('contact-notes').value = c.notes || '';
+    }
+  } else {
+    title.textContent = 'Neuer Kontakt';
+    document.getElementById('contact-firstname').value = '';
+    document.getElementById('contact-lastname').value = '';
+    document.getElementById('contact-phone').value = '';
+    document.getElementById('contact-email').value = '';
+    document.getElementById('contact-address').value = '';
+    document.getElementById('contact-zip').value = '';
+    document.getElementById('contact-city').value = '';
+    document.getElementById('contact-group').value = '';
+    document.getElementById('contact-notes').value = '';
+  }
+
+  // Gruppen-Datalist aktualisieren
+  updateContactGroupsList();
+  modal.classList.add('active');
+}
+
+function closeContactModal() {
+  document.getElementById('contact-modal').classList.remove('active');
+}
+
+function updateContactGroupsList() {
+  const groups = [...new Set(store.contacts.map(c => c.group).filter(Boolean))].sort();
+  const datalist = document.getElementById('contact-groups-list');
+  if (datalist) {
+    datalist.innerHTML = groups.map(g => `<option value="${escapeHtml(g)}">`).join('');
+  }
+  // Filter-Dropdown aktualisieren
+  const filter = document.getElementById('filter-contact-group');
+  if (filter) {
+    const current = filter.value;
+    filter.innerHTML = '<option value="">Alle Gruppen</option>' +
+      groups.map(g => `<option value="${escapeHtml(g)}" ${g === current ? 'selected' : ''}>${escapeHtml(g)}</option>`).join('');
+  }
+}
+
+async function saveContact() {
+  const editId = document.getElementById('contact-edit-id').value;
+  const data = {
+    firstName: document.getElementById('contact-firstname').value.trim(),
+    lastName: document.getElementById('contact-lastname').value.trim(),
+    phone: document.getElementById('contact-phone').value.trim(),
+    email: document.getElementById('contact-email').value.trim(),
+    address: document.getElementById('contact-address').value.trim(),
+    zip: document.getElementById('contact-zip').value.trim(),
+    city: document.getElementById('contact-city').value.trim(),
+    group: document.getElementById('contact-group').value.trim(),
+    notes: document.getElementById('contact-notes').value.trim(),
+  };
+
+  if (!data.firstName || !data.lastName) {
+    showToast('Bitte Vor- und Nachname eingeben', 'error');
+    return;
+  }
+
+  if (editId) {
+    await store.updateContact(editId, data);
+    showToast('Kontakt aktualisiert', 'success');
+  } else {
+    await store.addContact(data);
+    showToast('Kontakt gespeichert', 'success');
+  }
+
+  closeContactModal();
+  renderContactsList();
+}
+
+async function deleteContact(id) {
+  if (!confirm('Kontakt wirklich löschen?')) return;
+  await store.deleteContact(id);
+  renderContactsList();
+  showToast('Kontakt gelöscht');
+}
+
+function renderContactsList() {
+  const container = document.getElementById('contacts-list');
+  const empty = document.getElementById('contacts-empty');
+  if (!container) return;
+
+  const groupFilter = document.getElementById('filter-contact-group').value;
+  let contacts = [...store.contacts];
+
+  if (groupFilter) {
+    contacts = contacts.filter(c => c.group === groupFilter);
+  }
+
+  // Sort alphabetically
+  contacts.sort((a, b) => (a.lastName || '').localeCompare(b.lastName || ''));
+
+  updateContactGroupsList();
+
+  if (contacts.length === 0) {
+    container.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+
+  empty.style.display = 'none';
+  container.innerHTML = contacts.map(c => {
+    const initials = ((c.firstName || '')[0] || '') + ((c.lastName || '')[0] || '');
+    const fullName = [c.firstName, c.lastName].filter(Boolean).join(' ');
+    const details = [c.phone, c.email].filter(Boolean).join(' · ');
+    const location = [c.zip, c.city].filter(Boolean).join(' ');
+    return `
+      <div class="contact-card">
+        <div class="contact-avatar">${escapeHtml(initials.toUpperCase())}</div>
+        <div class="contact-info">
+          <div class="contact-name">${escapeHtml(fullName)}</div>
+          <div class="contact-detail">${escapeHtml(details)}</div>
+          ${location ? `<div class="contact-detail">${escapeHtml(location)}</div>` : ''}
+        </div>
+        ${c.group ? `<span class="contact-group-badge">${escapeHtml(c.group)}</span>` : ''}
+        <div class="contact-actions">
+          <button class="btn-icon" title="Bearbeiten" onclick="showContactForm('${c.id}')">✏️</button>
+          <button class="btn-icon" title="Löschen" onclick="deleteContact('${c.id}')">🗑️</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function filterContacts() {
+  const query = document.getElementById('search-contacts').value.toLowerCase().trim();
+  const cards = document.querySelectorAll('.contact-card');
+  cards.forEach(card => {
+    card.style.display = card.textContent.toLowerCase().includes(query) ? '' : 'none';
+  });
+}
+
+// ==========================
+// DOKUMENTE (Documents)
+// ==========================
+
+async function uploadDocument() {
+  const result = await window.api.uploadDocument();
+  if (!result) return;
+
+  // Show category modal
+  document.getElementById('doc-pending-path').value = result.filePath;
+  document.getElementById('doc-pending-name').value = result.fileName;
+  document.getElementById('doc-pending-size').value = result.size;
+  document.getElementById('doc-display-name').value = result.fileName;
+  document.getElementById('doc-description').value = '';
+  document.getElementById('doc-category-select').value = 'sonstiges';
+  document.getElementById('doc-category-modal').classList.add('active');
+}
+
+function closeDocCategoryModal() {
+  document.getElementById('doc-category-modal').classList.remove('active');
+}
+
+async function confirmDocumentUpload() {
+  const filePath = document.getElementById('doc-pending-path').value;
+  const fileName = document.getElementById('doc-pending-name').value;
+  const size = parseInt(document.getElementById('doc-pending-size').value) || 0;
+  const category = document.getElementById('doc-category-select').value;
+  const description = document.getElementById('doc-description').value.trim();
+
+  await store.addDocument({
+    fileName,
+    filePath,
+    category,
+    description,
+    size,
+  });
+
+  closeDocCategoryModal();
+  renderDocumentsList();
+  showToast('Dokument hochgeladen', 'success');
+}
+
+async function openDocument(id) {
+  const doc = store.documents.find(d => d.id === id);
+  if (doc && doc.filePath) {
+    await window.api.openDocument(doc.filePath);
+  }
+}
+
+async function deleteDocument(id) {
+  if (!confirm('Dokument wirklich löschen?')) return;
+  const doc = store.documents.find(d => d.id === id);
+  if (doc && doc.filePath) {
+    await window.api.deleteDocumentFile(doc.filePath);
+  }
+  await store.deleteDocument(id);
+  renderDocumentsList();
+  showToast('Dokument gelöscht');
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+const DOC_CATEGORY_LABELS = {
+  satzung: 'Satzung & Ordnungen',
+  protokoll: 'Protokolle',
+  vertrag: 'Verträge',
+  bescheid: 'Bescheide & Behörden',
+  sonstiges: 'Sonstiges',
+};
+
+function renderDocumentsList() {
+  const tbody = document.getElementById('documents-tbody');
+  const empty = document.getElementById('documents-empty');
+  const table = document.getElementById('documents-table');
+  if (!tbody) return;
+
+  const catFilter = document.getElementById('filter-doc-category').value;
+  let docs = [...store.documents];
+
+  if (catFilter) {
+    docs = docs.filter(d => d.category === catFilter);
+  }
+
+  if (docs.length === 0) {
+    table.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+
+  table.style.display = '';
+  empty.style.display = 'none';
+
+  // Sort by date descending
+  docs.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+  tbody.innerHTML = docs.map(d => {
+    const ext = (d.fileName || '').split('.').pop().toLowerCase();
+    const icon = ext === 'pdf' ? '📕' : ['doc', 'docx'].includes(ext) ? '📘' : ['xls', 'xlsx'].includes(ext) ? '📗' : ['png', 'jpg', 'jpeg'].includes(ext) ? '🖼️' : '📄';
+    return `
+      <tr>
+        <td><span style="margin-right:6px;">${icon}</span><strong>${escapeHtml(d.fileName)}</strong>${d.description ? `<br><span style="font-size:11px;color:var(--text-tertiary);">${escapeHtml(d.description)}</span>` : ''}</td>
+        <td><span class="badge">${DOC_CATEGORY_LABELS[d.category] || d.category || '—'}</span></td>
+        <td>${formatDate(d.createdAt)}</td>
+        <td>${formatFileSize(d.size || 0)}</td>
+        <td>
+          <button class="btn-icon" title="Öffnen" onclick="openDocument('${d.id}')">📂</button>
+          <button class="btn-icon" title="Löschen" onclick="deleteDocument('${d.id}')">🗑️</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function filterDocuments() {
+  const query = document.getElementById('search-documents').value.toLowerCase().trim();
+  const rows = document.querySelectorAll('#documents-tbody tr');
+  rows.forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(query) ? '' : 'none';
+  });
+}
+
+// ==========================
+// KALENDER (Calendar)
+// ==========================
+let calendarYear = new Date().getFullYear();
+let calendarMonth = new Date().getMonth();
+let selectedDate = null;
+
+const EVENT_CATEGORY_LABELS = {
+  sitzung: 'Sitzung',
+  veranstaltung: 'Veranstaltung',
+  gebet: 'Gebet',
+  kurs: 'Kurs',
+  feiertag: 'Feiertag',
+  sonstiges: 'Sonstiges',
+};
+
+const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+const DAY_NAMES = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+function renderCalendar() {
+  const grid = document.getElementById('calendar-grid');
+  const label = document.getElementById('calendar-month-label');
+  if (!grid || !label) return;
+
+  label.textContent = `${MONTH_NAMES[calendarMonth]} ${calendarYear}`;
+
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+
+  // First day of month
+  const firstDay = new Date(calendarYear, calendarMonth, 1);
+  // Monday = 0 ... Sunday = 6
+  let startDow = firstDay.getDay() - 1;
+  if (startDow < 0) startDow = 6;
+
+  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+  const daysInPrev = new Date(calendarYear, calendarMonth, 0).getDate();
+
+  let html = '';
+  // Header row
+  for (const day of DAY_NAMES) {
+    html += `<div class="calendar-header-cell">${day}</div>`;
+  }
+
+  // Calendar cells
+  const totalCells = Math.ceil((startDow + daysInMonth) / 7) * 7;
+  for (let i = 0; i < totalCells; i++) {
+    let dayNum, dateStr, isOther = false;
+
+    if (i < startDow) {
+      // Previous month
+      dayNum = daysInPrev - startDow + i + 1;
+      const pm = calendarMonth === 0 ? 11 : calendarMonth - 1;
+      const py = calendarMonth === 0 ? calendarYear - 1 : calendarYear;
+      dateStr = `${py}-${String(pm + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+      isOther = true;
+    } else if (i >= startDow + daysInMonth) {
+      // Next month
+      dayNum = i - startDow - daysInMonth + 1;
+      const nm = calendarMonth === 11 ? 0 : calendarMonth + 1;
+      const ny = calendarMonth === 11 ? calendarYear + 1 : calendarYear;
+      dateStr = `${ny}-${String(nm + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+      isOther = true;
+    } else {
+      dayNum = i - startDow + 1;
+      dateStr = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+    }
+
+    const isToday = dateStr === todayStr;
+    const isSelected = dateStr === selectedDate;
+    const dayEvents = store.events.filter(e => e.date === dateStr);
+
+    let classes = 'calendar-cell';
+    if (isOther) classes += ' other-month';
+    if (isToday) classes += ' today';
+    if (isSelected) classes += ' selected';
+
+    html += `<div class="${classes}" onclick="selectCalendarDay('${dateStr}')">`;
+    html += `<div class="calendar-day-number">${dayNum}</div>`;
+    for (const ev of dayEvents.slice(0, 3)) {
+      html += `<div class="calendar-event-dot cat-${ev.category || 'sonstiges'}">${escapeHtml(ev.title)}</div>`;
+    }
+    if (dayEvents.length > 3) {
+      html += `<div style="font-size:10px;color:var(--text-tertiary);">+${dayEvents.length - 3} mehr</div>`;
+    }
+    html += '</div>';
+  }
+
+  grid.innerHTML = html;
+
+  // Show day detail if selected
+  if (selectedDate) {
+    showDayDetail(selectedDate);
+  }
+}
+
+function calendarPrevMonth() {
+  calendarMonth--;
+  if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
+  renderCalendar();
+}
+
+function calendarNextMonth() {
+  calendarMonth++;
+  if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
+  renderCalendar();
+}
+
+function calendarToday() {
+  const now = new Date();
+  calendarYear = now.getFullYear();
+  calendarMonth = now.getMonth();
+  selectedDate = now.toISOString().split('T')[0];
+  renderCalendar();
+}
+
+function selectCalendarDay(dateStr) {
+  selectedDate = dateStr;
+  renderCalendar();
+}
+
+function showDayDetail(dateStr) {
+  const detail = document.getElementById('calendar-day-detail');
+  const title = document.getElementById('calendar-day-title');
+  const container = document.getElementById('calendar-day-events');
+  if (!detail) return;
+
+  const dayEvents = store.events.filter(e => e.date === dateStr).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+
+  const dateObj = new Date(dateStr + 'T12:00:00');
+  title.textContent = `Termine am ${dateObj.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`;
+
+  if (dayEvents.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-tertiary);font-size:13px;padding:8px 0;">Keine Termine an diesem Tag.</p>';
+  } else {
+    container.innerHTML = dayEvents.map(ev => `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg-secondary);border-radius:var(--radius);margin-bottom:6px;">
+        <div class="calendar-event-dot cat-${ev.category || 'sonstiges'}" style="padding:4px 10px;font-size:12px;">${EVENT_CATEGORY_LABELS[ev.category] || ev.category}</div>
+        <div style="flex:1;">
+          <div style="font-weight:600;font-size:14px;">${escapeHtml(ev.title)}</div>
+          ${ev.description ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">${escapeHtml(ev.description)}</div>` : ''}
+        </div>
+        ${ev.time ? `<span style="font-size:13px;color:var(--text-secondary);font-weight:500;">${ev.time} Uhr</span>` : ''}
+        <button class="btn-icon" title="Bearbeiten" onclick="showEventForm('${ev.id}')">✏️</button>
+        <button class="btn-icon" title="Löschen" onclick="deleteEvent('${ev.id}')">🗑️</button>
+      </div>
+    `).join('');
+  }
+
+  detail.style.display = '';
+}
+
+function showEventForm(editId) {
+  const modal = document.getElementById('event-modal');
+  const title = document.getElementById('event-modal-title');
+  document.getElementById('event-edit-id').value = editId || '';
+
+  if (editId) {
+    title.textContent = 'Termin bearbeiten';
+    const ev = store.getEvent(editId);
+    if (ev) {
+      document.getElementById('event-title').value = ev.title || '';
+      document.getElementById('event-date').value = ev.date || '';
+      document.getElementById('event-time').value = ev.time || '';
+      document.getElementById('event-category').value = ev.category || 'sonstiges';
+      document.getElementById('event-description').value = ev.description || '';
+    }
+  } else {
+    title.textContent = 'Neuer Termin';
+    document.getElementById('event-title').value = '';
+    document.getElementById('event-date').value = selectedDate || new Date().toISOString().split('T')[0];
+    document.getElementById('event-time').value = '';
+    document.getElementById('event-category').value = 'sonstiges';
+    document.getElementById('event-description').value = '';
+  }
+
+  modal.classList.add('active');
+}
+
+function closeEventModal() {
+  document.getElementById('event-modal').classList.remove('active');
+}
+
+async function saveEvent() {
+  const editId = document.getElementById('event-edit-id').value;
+  const data = {
+    title: document.getElementById('event-title').value.trim(),
+    date: document.getElementById('event-date').value,
+    time: document.getElementById('event-time').value,
+    category: document.getElementById('event-category').value,
+    description: document.getElementById('event-description').value.trim(),
+  };
+
+  if (!data.title || !data.date) {
+    showToast('Bitte Titel und Datum eingeben', 'error');
+    return;
+  }
+
+  if (editId) {
+    await store.updateEvent(editId, data);
+    showToast('Termin aktualisiert', 'success');
+  } else {
+    await store.addEvent(data);
+    showToast('Termin erstellt', 'success');
+  }
+
+  closeEventModal();
+  renderCalendar();
+}
+
+async function deleteEvent(id) {
+  if (!confirm('Termin wirklich löschen?')) return;
+  await store.deleteEvent(id);
+  renderCalendar();
+  showToast('Termin gelöscht');
+}
+
+// ==========================
 // TEAMS
 // ==========================
 let teams = [];
@@ -2971,6 +3496,9 @@ async function switchOrg(orgId) {
   renderCustomersList();
   renderExpensesList();
   renderDonationsList();
+  renderContactsList();
+  renderDocumentsList();
+  renderCalendar();
   await loadTeams();
   renderSettingsForm();
   renderExpenseCategoriesSettings();
@@ -2988,6 +3516,9 @@ async function loadAllOrgsData() {
   store.invoices = [];
   store.expenses = [];
   store.donations = [];
+  store.contacts = [];
+  store.documents = [];
+  store.events = [];
   teams = [];
 
   for (const org of store.allOrgs) {
@@ -3003,6 +3534,15 @@ async function loadAllOrgsData() {
 
       const dons = await db.collection('orgs').doc(org.id).collection('donations').get();
       dons.docs.forEach(doc => store.donations.push({ id: doc.id, ...doc.data(), _orgId: org.id, _orgName: org.name }));
+
+      const conts = await db.collection('orgs').doc(org.id).collection('contacts').get();
+      conts.docs.forEach(doc => store.contacts.push({ id: doc.id, ...doc.data(), _orgId: org.id, _orgName: org.name }));
+
+      const docs2 = await db.collection('orgs').doc(org.id).collection('documents').get();
+      docs2.docs.forEach(doc => store.documents.push({ id: doc.id, ...doc.data(), _orgId: org.id, _orgName: org.name }));
+
+      const evts = await db.collection('orgs').doc(org.id).collection('events').get();
+      evts.docs.forEach(doc => store.events.push({ id: doc.id, ...doc.data(), _orgId: org.id, _orgName: org.name }));
 
       const tms = await db.collection('orgs').doc(org.id).collection('teams').get();
       tms.docs.forEach(doc => teams.push({ id: doc.id, ...doc.data(), _orgId: org.id, _orgName: org.name }));

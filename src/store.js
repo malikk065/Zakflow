@@ -7,6 +7,9 @@ class Store {
     this.invoices = [];
     this.expenses = [];
     this.donations = [];
+    this.contacts = [];
+    this.documents = [];
+    this.events = [];
     this.useFirebase = false;
     this.isElectron = typeof window.api !== 'undefined';
     this._listeners = [];
@@ -144,6 +147,9 @@ class Store {
     await this.loadInvoices();
     await this.loadExpenses();
     await this.loadDonations();
+    await this.loadContacts();
+    await this.loadDocuments();
+    await this.loadEvents();
     this.startRealtimeSync();
   }
 
@@ -234,6 +240,27 @@ class Store {
       if (this.onDataChanged) this.onDataChanged('donations');
     }, err => console.warn('Spenden-Listener Fehler:', err));
     this._listeners.push(unsubDonations);
+
+    // Kontakte-Listener
+    const unsubContacts = this._col('contacts').onSnapshot(snapshot => {
+      this.contacts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (this.onDataChanged) this.onDataChanged('contacts');
+    }, err => console.warn('Kontakte-Listener Fehler:', err));
+    this._listeners.push(unsubContacts);
+
+    // Dokumente-Listener
+    const unsubDocuments = this._col('documents').onSnapshot(snapshot => {
+      this.documents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (this.onDataChanged) this.onDataChanged('documents');
+    }, err => console.warn('Dokumente-Listener Fehler:', err));
+    this._listeners.push(unsubDocuments);
+
+    // Events-Listener
+    const unsubEvents = this._col('events').onSnapshot(snapshot => {
+      this.events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (this.onDataChanged) this.onDataChanged('events');
+    }, err => console.warn('Events-Listener Fehler:', err));
+    this._listeners.push(unsubEvents);
 
     // Settings-Listener
     const unsubSettings = this._settingsDoc().onSnapshot(doc => {
@@ -606,6 +633,156 @@ class Store {
   getDonation(id) {
     return this.donations.find(d => d.id === id) || null;
   }
+
+  // --- Kontakte (Contacts) ---
+  async loadContacts() {
+    if (this.useFirebase) {
+      try {
+        const snapshot = await this._col('contacts').get();
+        if (!snapshot.empty) {
+          this.contacts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          return this.contacts;
+        }
+      } catch (e) { console.warn('Firebase contacts load failed:', e); }
+    }
+    if (this.isElectron) {
+      this.contacts = await window.api.getContacts();
+    }
+    return this.contacts;
+  }
+
+  async saveContacts() {
+    if (this.isElectron) await window.api.saveContacts(this.contacts);
+  }
+
+  async addContact(contact) {
+    contact.id = this.generateId();
+    contact.createdAt = new Date().toISOString();
+    this.contacts.push(contact);
+    if (this.useFirebase) {
+      try { await this._col('contacts').doc(contact.id).set(contact); } catch (e) { console.warn('Firebase contact add failed:', e); }
+    }
+    if (this.isElectron) await this.saveContacts();
+    return contact;
+  }
+
+  async updateContact(id, data) {
+    const index = this.contacts.findIndex(c => c.id === id);
+    if (index !== -1) {
+      this.contacts[index] = { ...this.contacts[index], ...data };
+      if (this.useFirebase) {
+        try { await this._col('contacts').doc(id).update(data); } catch (e) { console.warn('Firebase contact update failed:', e); }
+      }
+      if (this.isElectron) await this.saveContacts();
+      return this.contacts[index];
+    }
+    return null;
+  }
+
+  async deleteContact(id) {
+    this.contacts = this.contacts.filter(c => c.id !== id);
+    if (this.useFirebase) {
+      try { await this._col('contacts').doc(id).delete(); } catch (e) { console.warn('Firebase contact delete failed:', e); }
+    }
+    if (this.isElectron) await this.saveContacts();
+  }
+
+  getContact(id) { return this.contacts.find(c => c.id === id) || null; }
+
+  // --- Dokumente (Documents metadata) ---
+  async loadDocuments() {
+    if (this.useFirebase) {
+      try {
+        const snapshot = await this._col('documents').get();
+        if (!snapshot.empty) {
+          this.documents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          return this.documents;
+        }
+      } catch (e) { console.warn('Firebase documents load failed:', e); }
+    }
+    if (this.isElectron) {
+      this.documents = await window.api.getDocuments();
+    }
+    return this.documents;
+  }
+
+  async saveDocuments() {
+    if (this.isElectron) await window.api.saveDocuments(this.documents);
+  }
+
+  async addDocument(docMeta) {
+    docMeta.id = this.generateId();
+    docMeta.createdAt = new Date().toISOString();
+    this.documents.push(docMeta);
+    if (this.useFirebase) {
+      try { await this._col('documents').doc(docMeta.id).set(docMeta); } catch (e) { console.warn('Firebase doc add failed:', e); }
+    }
+    if (this.isElectron) await this.saveDocuments();
+    return docMeta;
+  }
+
+  async deleteDocument(id) {
+    this.documents = this.documents.filter(d => d.id !== id);
+    if (this.useFirebase) {
+      try { await this._col('documents').doc(id).delete(); } catch (e) { console.warn('Firebase doc delete failed:', e); }
+    }
+    if (this.isElectron) await this.saveDocuments();
+  }
+
+  // --- Kalender (Events) ---
+  async loadEvents() {
+    if (this.useFirebase) {
+      try {
+        const snapshot = await this._col('events').get();
+        if (!snapshot.empty) {
+          this.events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          return this.events;
+        }
+      } catch (e) { console.warn('Firebase events load failed:', e); }
+    }
+    if (this.isElectron) {
+      this.events = await window.api.getEvents();
+    }
+    return this.events;
+  }
+
+  async saveEvents() {
+    if (this.isElectron) await window.api.saveEvents(this.events);
+  }
+
+  async addEvent(event) {
+    event.id = this.generateId();
+    event.createdAt = new Date().toISOString();
+    this.events.push(event);
+    if (this.useFirebase) {
+      try { await this._col('events').doc(event.id).set(event); } catch (e) { console.warn('Firebase event add failed:', e); }
+    }
+    if (this.isElectron) await this.saveEvents();
+    return event;
+  }
+
+  async updateEvent(id, data) {
+    const index = this.events.findIndex(e => e.id === id);
+    if (index !== -1) {
+      this.events[index] = { ...this.events[index], ...data };
+      if (this.useFirebase) {
+        try { await this._col('events').doc(id).update(data); } catch (e) { console.warn('Firebase event update failed:', e); }
+      }
+      if (this.isElectron) await this.saveEvents();
+      return this.events[index];
+    }
+    return null;
+  }
+
+  async deleteEvent(id) {
+    this.events = this.events.filter(e => e.id !== id);
+    if (this.useFirebase) {
+      try { await this._col('events').doc(id).delete(); } catch (e) { console.warn('Firebase event delete failed:', e); }
+    }
+    if (this.isElectron) await this.saveEvents();
+  }
+
+  getEvent(id) { return this.events.find(e => e.id === id) || null; }
 
   getNextDonationNumber(prefix = 'SQ') {
     const year = new Date().getFullYear();

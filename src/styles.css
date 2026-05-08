@@ -1416,3 +1416,154 @@ td {
     padding: 24px 20px;
   }
 }
+
+/* =====================
+   CALENDAR
+   ===================== */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.calendar-header-cell {
+  background: var(--bg-secondary);
+  padding: 8px 4px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.calendar-cell {
+  background: var(--bg-primary);
+  min-height: 80px;
+  padding: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+}
+
+.calendar-cell:hover {
+  background: var(--bg-secondary);
+}
+
+.calendar-cell.other-month {
+  opacity: 0.35;
+}
+
+.calendar-cell.today {
+  background: rgba(0, 113, 227, 0.06);
+}
+
+.calendar-cell.today .calendar-day-number {
+  background: var(--accent);
+  color: white;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calendar-day-number {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+}
+
+.calendar-event-dot {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  color: white;
+}
+
+.calendar-event-dot.cat-sitzung { background: #5856d6; }
+.calendar-event-dot.cat-veranstaltung { background: #ff9500; }
+.calendar-event-dot.cat-gebet { background: #34c759; }
+.calendar-event-dot.cat-kurs { background: #007aff; }
+.calendar-event-dot.cat-feiertag { background: #ff2d55; }
+.calendar-event-dot.cat-sonstiges { background: #8e8e93; }
+
+.calendar-cell.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Contact cards */
+.contact-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  transition: background 0.15s;
+}
+
+.contact-card:hover {
+  background: var(--bg-tertiary);
+}
+
+.contact-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.contact-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.contact-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.contact-detail {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.contact-group-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  margin-right: 4px;
+}
+
+.contact-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}

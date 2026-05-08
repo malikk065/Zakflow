@@ -396,6 +396,88 @@ ipcMain.handle('donations:save', (_event, donations) => {
   return true;
 });
 
+// Contacts (Kontaktbuch)
+ipcMain.handle('contacts:getAll', () => {
+  const filePath = path.join(getDataPath(), 'contacts.json');
+  return readJSON(filePath) || [];
+});
+
+ipcMain.handle('contacts:save', (_event, contacts) => {
+  const filePath = path.join(getDataPath(), 'contacts.json');
+  writeJSON(filePath, contacts);
+  return true;
+});
+
+// Documents (Dokumente-Ablage)
+ipcMain.handle('documents:getAll', () => {
+  const filePath = path.join(getDataPath(), 'documents.json');
+  return readJSON(filePath) || [];
+});
+
+ipcMain.handle('documents:save', (_event, documents) => {
+  const filePath = path.join(getDataPath(), 'documents.json');
+  writeJSON(filePath, documents);
+  return true;
+});
+
+ipcMain.handle('documents:upload', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Dokument hochladen',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Dokumente', extensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'png', 'jpg', 'jpeg'] },
+    ],
+  });
+
+  if (result.canceled || result.filePaths.length === 0) return null;
+
+  const sourcePath = result.filePaths[0];
+  const fileName = path.basename(sourcePath);
+  const docDir = path.join(getDataPath(), 'Dokumente');
+  if (!fs.existsSync(docDir)) fs.mkdirSync(docDir, { recursive: true });
+
+  const destPath = path.join(docDir, fileName);
+  try {
+    fs.copyFileSync(sourcePath, destPath);
+    const stats = fs.statSync(destPath);
+    return { filePath: destPath, fileName, size: stats.size };
+  } catch (e) {
+    console.error('Dokument-Upload-Fehler:', e.message);
+    return null;
+  }
+});
+
+ipcMain.handle('documents:open', (_event, filePath) => {
+  const { shell } = require('electron');
+  if (fs.existsSync(filePath)) {
+    shell.openPath(filePath);
+    return true;
+  }
+  return false;
+});
+
+ipcMain.handle('documents:delete', (_event, filePath) => {
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    return true;
+  } catch (e) {
+    console.error('Dokument-Lösch-Fehler:', e.message);
+    return false;
+  }
+});
+
+// Events (Kalender)
+ipcMain.handle('events:getAll', () => {
+  const filePath = path.join(getDataPath(), 'events.json');
+  return readJSON(filePath) || [];
+});
+
+ipcMain.handle('events:save', (_event, events) => {
+  const filePath = path.join(getDataPath(), 'events.json');
+  writeJSON(filePath, events);
+  return true;
+});
+
 // Saved Items (Gespeicherte Positionen)
 ipcMain.handle('savedItems:getAll', () => {
   const filePath = path.join(getDataPath(), 'saved-items.json');

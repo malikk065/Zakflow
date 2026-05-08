@@ -238,6 +238,18 @@
           <span class="nav-icon">🤲</span>
           <span>Spenden</span>
         </li>
+        <li class="nav-item" data-tab="contacts">
+          <span class="nav-icon">📇</span>
+          <span>Kontakte</span>
+        </li>
+        <li class="nav-item" data-tab="documents">
+          <span class="nav-icon">📁</span>
+          <span>Dokumente</span>
+        </li>
+        <li class="nav-item" data-tab="calendar">
+          <span class="nav-icon">📅</span>
+          <span>Kalender</span>
+        </li>
         <li class="nav-item" data-tab="orgs" id="nav-orgs" style="display:none;">
           <span class="nav-icon">&#127970;</span>
           <span>Vereine</span>
@@ -861,6 +873,233 @@
               <button type="button" class="btn btn-primary" onclick="generateSammelquittung()">PDF erstellen</button>
               <button type="button" class="btn btn-ghost" onclick="closeSammelquittungModal()">Abbrechen</button>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Kontaktbuch -->
+      <section id="tab-contacts" class="tab-content">
+        <div class="tab-header">
+          <h2>Kontaktbuch</h2>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary" onclick="showContactForm()">+ Neuer Kontakt</button>
+          </div>
+        </div>
+
+        <!-- Filter -->
+        <div class="filter-row" style="margin-bottom:16px;">
+          <input type="text" id="search-contacts" placeholder="Suche nach Name, Telefon, E-Mail..." oninput="filterContacts()" style="flex:1;">
+          <select id="filter-contact-group" onchange="renderContactsList()" style="width:160px;">
+            <option value="">Alle Gruppen</option>
+          </select>
+        </div>
+
+        <div id="contacts-empty" class="empty-state">
+          <p>Noch keine Kontakte angelegt.</p>
+          <p style="color:var(--text-tertiary);">Verwalte hier dein Gemeinde-Adressbuch.</p>
+        </div>
+        <div id="contacts-list"></div>
+
+        <!-- Contact Modal -->
+        <div class="modal" id="contact-modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3 id="contact-modal-title">Neuer Kontakt</h3>
+              <button class="btn-close" onclick="closeContactModal()">&times;</button>
+            </div>
+            <form id="contact-form">
+              <input type="hidden" id="contact-edit-id">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Vorname *</label>
+                  <input type="text" id="contact-firstname" required placeholder="Vorname">
+                </div>
+                <div class="form-group">
+                  <label>Nachname *</label>
+                  <input type="text" id="contact-lastname" required placeholder="Nachname">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Telefon</label>
+                  <input type="tel" id="contact-phone" placeholder="+49 123 456789">
+                </div>
+                <div class="form-group">
+                  <label>E-Mail</label>
+                  <input type="email" id="contact-email" placeholder="name@beispiel.de">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Straße + Nr.</label>
+                <input type="text" id="contact-address" placeholder="Musterstraße 1">
+              </div>
+              <div class="form-row">
+                <div class="form-group" style="flex:0.3">
+                  <label>PLZ</label>
+                  <input type="text" id="contact-zip" placeholder="12345">
+                </div>
+                <div class="form-group">
+                  <label>Ort</label>
+                  <input type="text" id="contact-city" placeholder="Musterstadt">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Gruppe</label>
+                <input type="text" id="contact-group" placeholder="z.B. Vorstand, Jugend, Frauengruppe..." list="contact-groups-list">
+                <datalist id="contact-groups-list"></datalist>
+              </div>
+              <div class="form-group">
+                <label>Notiz</label>
+                <input type="text" id="contact-notes" placeholder="Interne Notiz...">
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Speichern</button>
+                <button type="button" class="btn btn-ghost" onclick="closeContactModal()">Abbrechen</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- Dokumente -->
+      <section id="tab-documents" class="tab-content">
+        <div class="tab-header">
+          <h2>Dokumente</h2>
+          <button class="btn btn-primary" onclick="uploadDocument()">+ Dokument hochladen</button>
+        </div>
+
+        <!-- Filter -->
+        <div class="filter-row" style="margin-bottom:16px;">
+          <input type="text" id="search-documents" placeholder="Suche nach Dateiname, Kategorie..." oninput="filterDocuments()" style="flex:1;">
+          <select id="filter-doc-category" onchange="renderDocumentsList()" style="width:180px;">
+            <option value="">Alle Kategorien</option>
+            <option value="satzung">Satzung & Ordnungen</option>
+            <option value="protokoll">Protokolle</option>
+            <option value="vertrag">Verträge</option>
+            <option value="bescheid">Bescheide & Behörden</option>
+            <option value="sonstiges">Sonstiges</option>
+          </select>
+        </div>
+
+        <div id="documents-empty" class="empty-state">
+          <p>Noch keine Dokumente hochgeladen.</p>
+          <p style="color:var(--text-tertiary);">Speichere hier Satzung, Protokolle, Verträge und andere wichtige Dokumente.</p>
+        </div>
+        <table class="data-table" id="documents-table" style="display:none;">
+          <thead>
+            <tr>
+              <th>Dateiname</th>
+              <th>Kategorie</th>
+              <th>Hochgeladen</th>
+              <th>Größe</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody id="documents-tbody"></tbody>
+        </table>
+
+        <!-- Document Kategorie Modal -->
+        <div class="modal" id="doc-category-modal">
+          <div class="modal-content" style="max-width:400px;">
+            <div class="modal-header">
+              <h3>Dokument einordnen</h3>
+              <button class="btn-close" onclick="closeDocCategoryModal()">&times;</button>
+            </div>
+            <input type="hidden" id="doc-pending-path">
+            <input type="hidden" id="doc-pending-name">
+            <input type="hidden" id="doc-pending-size">
+            <div class="form-group">
+              <label>Dateiname</label>
+              <input type="text" id="doc-display-name" readonly class="input-readonly">
+            </div>
+            <div class="form-group">
+              <label>Kategorie</label>
+              <select id="doc-category-select">
+                <option value="satzung">Satzung & Ordnungen</option>
+                <option value="protokoll">Protokolle</option>
+                <option value="vertrag">Verträge</option>
+                <option value="bescheid">Bescheide & Behörden</option>
+                <option value="sonstiges">Sonstiges</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Beschreibung</label>
+              <input type="text" id="doc-description" placeholder="Optionale Beschreibung...">
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn btn-primary" onclick="confirmDocumentUpload()">Hochladen</button>
+              <button type="button" class="btn btn-ghost" onclick="closeDocCategoryModal()">Abbrechen</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Kalender -->
+      <section id="tab-calendar" class="tab-content">
+        <div class="tab-header">
+          <h2>Kalender</h2>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="btn" onclick="calendarPrevMonth()">←</button>
+            <span id="calendar-month-label" style="font-weight:600;min-width:160px;text-align:center;"></span>
+            <button class="btn" onclick="calendarNextMonth()">→</button>
+            <button class="btn" onclick="calendarToday()" style="margin-left:8px;">Heute</button>
+            <button class="btn btn-primary" onclick="showEventForm()" style="margin-left:auto;">+ Termin</button>
+          </div>
+        </div>
+
+        <div id="calendar-grid" class="calendar-grid"></div>
+
+        <!-- Tages-Detail -->
+        <div id="calendar-day-detail" style="display:none;margin-top:20px;">
+          <div class="section-header">
+            <h3 id="calendar-day-title">Termine</h3>
+          </div>
+          <div id="calendar-day-events"></div>
+        </div>
+
+        <!-- Event Modal -->
+        <div class="modal" id="event-modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3 id="event-modal-title">Neuer Termin</h3>
+              <button class="btn-close" onclick="closeEventModal()">&times;</button>
+            </div>
+            <form id="event-form">
+              <input type="hidden" id="event-edit-id">
+              <div class="form-group">
+                <label>Titel *</label>
+                <input type="text" id="event-title" required placeholder="z.B. Vorstandssitzung, Iftar...">
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Datum *</label>
+                  <input type="date" id="event-date" required>
+                </div>
+                <div class="form-group">
+                  <label>Uhrzeit</label>
+                  <input type="time" id="event-time">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Kategorie</label>
+                <select id="event-category">
+                  <option value="sitzung">Sitzung</option>
+                  <option value="veranstaltung">Veranstaltung</option>
+                  <option value="gebet">Gebet</option>
+                  <option value="kurs">Kurs</option>
+                  <option value="feiertag">Feiertag</option>
+                  <option value="sonstiges">Sonstiges</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Beschreibung</label>
+                <textarea id="event-description" rows="2" placeholder="Details zum Termin..."></textarea>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Speichern</button>
+                <button type="button" class="btn btn-ghost" onclick="closeEventModal()">Abbrechen</button>
+              </div>
+            </form>
           </div>
         </div>
       </section>
