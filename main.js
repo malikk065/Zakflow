@@ -268,6 +268,64 @@ ipcMain.handle('settings:readLogoBase64', (_event, logoPath) => {
   return null;
 });
 
+// Signature Upload
+ipcMain.handle('settings:uploadSignature', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Unterschrift auswählen',
+    filters: [{ name: 'Bilder', extensions: ['png', 'jpg', 'jpeg'] }],
+    properties: ['openFile'],
+  });
+
+  if (result.canceled || result.filePaths.length === 0) return null;
+
+  const sourcePath = result.filePaths[0];
+  const ext = path.extname(sourcePath);
+  const destPath = path.join(getDataPath(), `signature${ext}`);
+
+  try {
+    ['.png', '.jpg', '.jpeg'].forEach(e => {
+      const old = path.join(getDataPath(), `signature${e}`);
+      if (fs.existsSync(old)) try { fs.unlinkSync(old); } catch (_) {}
+    });
+    fs.copyFileSync(sourcePath, destPath);
+    fs.chmodSync(destPath, 0o644);
+  } catch (e) {
+    console.error('Unterschrift-Upload-Fehler:', e.message);
+    return null;
+  }
+  return destPath;
+});
+
+ipcMain.handle('settings:getSignature', () => {
+  const dataPath = getDataPath();
+  for (const ext of ['.png', '.jpg', '.jpeg']) {
+    const sigPath = path.join(dataPath, `signature${ext}`);
+    if (fs.existsSync(sigPath)) return sigPath;
+  }
+  return null;
+});
+
+ipcMain.handle('settings:removeSignature', () => {
+  const dataPath = getDataPath();
+  ['.png', '.jpg', '.jpeg'].forEach(ext => {
+    const sigPath = path.join(dataPath, `signature${ext}`);
+    if (fs.existsSync(sigPath)) try { fs.unlinkSync(sigPath); } catch (_) {}
+  });
+  return true;
+});
+
+ipcMain.handle('settings:readSignatureBase64', (_event, sigPath) => {
+  try {
+    if (sigPath && fs.existsSync(sigPath)) {
+      const buffer = fs.readFileSync(sigPath);
+      const ext = path.extname(sigPath).toLowerCase().replace('.', '');
+      const mimeType = ext === 'jpg' ? 'jpeg' : ext;
+      return { data: buffer.toString('base64'), mimeType: `image/${mimeType}` };
+    }
+  } catch (e) { console.error('Unterschrift-Lesefehler:', e.message); }
+  return null;
+});
+
 // Customers
 ipcMain.handle('customers:getAll', () => {
   const filePath = path.join(getDataPath(), 'customers.json');

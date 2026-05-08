@@ -1,7 +1,7 @@
 // PDF Generator mit pdf-lib
 // pdf-lib wird als UMD-Script im HTML vor diesem Skript geladen
 
-async function generateInvoicePDF({ invoice, settings, customer, totals, logoData }) {
+async function generateInvoicePDF({ invoice, settings, customer, totals, logoData, signatureData }) {
   const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
   const doc = await PDFDocument.create();
@@ -495,6 +495,33 @@ async function generateInvoicePDF({ invoice, settings, customer, totals, logoDat
   }
 
   // =====================
+  // Digitale Unterschrift
+  // =====================
+  if (signatureData && signatureData.data) {
+    try {
+      let sigImage;
+      if (signatureData.mimeType.includes('png')) {
+        sigImage = await doc.embedPng(Uint8Array.from(atob(signatureData.data), c => c.charCodeAt(0)));
+      } else if (signatureData.mimeType.includes('jpeg') || signatureData.mimeType.includes('jpg')) {
+        sigImage = await doc.embedJpg(Uint8Array.from(atob(signatureData.data), c => c.charCodeAt(0)));
+      }
+      if (sigImage) {
+        const dims = sigImage.scale(1);
+        const maxH = 40;
+        const maxW = 150;
+        const scale = Math.min(maxW / dims.width, maxH / dims.height, 1);
+        y -= 10;
+        page.drawImage(sigImage, { x: marginLeft, y: y - dims.height * scale, width: dims.width * scale, height: dims.height * scale });
+        y -= dims.height * scale + 4;
+        page.drawLine({ start: { x: marginLeft, y }, end: { x: marginLeft + 150, y }, thickness: 0.5, color: lightGray });
+        y -= 10;
+        page.drawText(settings.company.name || '', { x: marginLeft, y, size: 7, font: fontRegular, color: gray });
+        y -= 16;
+      }
+    } catch (e) { console.warn('Unterschrift-Embed-Fehler:', e); }
+  }
+
+  // =====================
   // Fußzeile
   // =====================
   const footerY = 30;
@@ -647,7 +674,7 @@ function amountToWordsDE(amount) {
   return '- ' + result + ' -';
 }
 
-async function generateDonationReceiptPDF({ donations, settings, logoData, isSammel = false, year }) {
+async function generateDonationReceiptPDF({ donations, settings, logoData, signatureData, isSammel = false, year }) {
   const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
   const doc = await PDFDocument.create();
@@ -925,7 +952,29 @@ async function generateDonationReceiptPDF({ donations, settings, logoData, isSam
   y -= 20;
   drawText(company.city || '_______________', ml, y, { size: 9 });
   drawText(', den ' + new Date().toLocaleDateString('de-DE'), ml + fontRegular.widthOfTextAtSize(company.city || '_______________', 9) + 2, y, { size: 9 });
-  y -= 30;
+  y -= 14;
+
+  // Digitale Unterschrift einbetten
+  if (signatureData && signatureData.data) {
+    try {
+      let sigImage;
+      if (signatureData.mimeType.includes('png')) {
+        sigImage = await doc.embedPng(Uint8Array.from(atob(signatureData.data), c => c.charCodeAt(0)));
+      } else if (signatureData.mimeType.includes('jpeg') || signatureData.mimeType.includes('jpg')) {
+        sigImage = await doc.embedJpg(Uint8Array.from(atob(signatureData.data), c => c.charCodeAt(0)));
+      }
+      if (sigImage) {
+        const dims = sigImage.scale(1);
+        const maxH = 45;
+        const maxW = 160;
+        const scale = Math.min(maxW / dims.width, maxH / dims.height, 1);
+        page.drawImage(sigImage, { x: ml, y: y - dims.height * scale, width: dims.width * scale, height: dims.height * scale });
+        y -= dims.height * scale + 4;
+      }
+    } catch (e) { console.warn('Unterschrift-Embed-Fehler:', e); }
+  } else {
+    y -= 16;
+  }
 
   drawLine(ml, y, ml + 200);
   y -= 12;

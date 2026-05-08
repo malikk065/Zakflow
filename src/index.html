@@ -1301,6 +1301,18 @@
             <button type="button" class="btn" onclick="uploadLogo()">Logo hochladen</button>
           </div>
 
+          <h3>Digitale Unterschrift</h3>
+          <p style="color:var(--text-secondary);font-size:12px;margin-bottom:12px;">Wird auf Rechnungen und Spendenquittungen als Unterschrift eingefügt.</p>
+          <div class="logo-section">
+            <div class="logo-preview" id="signature-preview">
+              <span class="logo-placeholder">Keine Unterschrift</span>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button type="button" class="btn" onclick="uploadSignature()">Unterschrift hochladen</button>
+              <button type="button" class="btn btn-ghost" onclick="removeSignature()">Entfernen</button>
+            </div>
+          </div>
+
           <h3>Cloud-Sync (Firebase)</h3>
           <p style="color:var(--text-secondary);font-size:12px;margin-bottom:12px;">Verbinde deine eigene Firebase-Datenbank, um Daten zwischen Geräten zu synchronisieren.</p>
           <div id="firebase-status" style="margin-bottom:12px;"></div>

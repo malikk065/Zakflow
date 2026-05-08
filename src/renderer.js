@@ -775,12 +775,14 @@ async function exportInvoicePDF(invoiceId, skipDialog = false) {
   const customer = store.getCustomer(inv.customerId);
   const totals = store.calculateInvoiceTotal(inv);
 
-  // Logo laden
+  // Logo + Unterschrift laden
   let logoData = null;
   const logoPath = await window.api.getLogo();
-  if (logoPath) {
-    logoData = await window.api.readLogoBase64(logoPath);
-  }
+  if (logoPath) logoData = await window.api.readLogoBase64(logoPath);
+
+  let signatureData = null;
+  const sigPath = await window.api.getSignature();
+  if (sigPath) signatureData = await window.api.readSignatureBase64(sigPath);
 
   try {
     const pdfBytes = await generateInvoicePDF({
@@ -789,6 +791,7 @@ async function exportInvoicePDF(invoiceId, skipDialog = false) {
       customer,
       totals,
       logoData,
+      signatureData,
     });
 
     // Immer automatisch in OneDrive/Daten-Ordner speichern
@@ -945,8 +948,9 @@ async function renderSettingsForm() {
   const dataPath = await window.api.getDataPath();
   document.getElementById('settings-data-path').value = dataPath;
 
-  // Logo
+  // Logo + Unterschrift
   await renderLogoPreview();
+  await renderSignaturePreview();
   updateNumberPreview();
   loadExpenseCategories();
   renderExpenseCategoriesSettings();
@@ -984,6 +988,38 @@ async function uploadLogo() {
     console.error('uploadLogo Fehler:', err);
     showToast('Logo-Fehler: ' + err.message, 'error');
   }
+}
+
+async function renderSignaturePreview() {
+  const preview = document.getElementById('signature-preview');
+  if (!preview) return;
+  const sigPath = await window.api.getSignature();
+  if (sigPath) {
+    const sigData = await window.api.readSignatureBase64(sigPath);
+    if (sigData) {
+      preview.innerHTML = `<img src="data:${sigData.mimeType};base64,${sigData.data}" alt="Unterschrift" style="max-height:60px;">`;
+      return;
+    }
+  }
+  preview.innerHTML = '<span class="logo-placeholder">Keine Unterschrift</span>';
+}
+
+async function uploadSignature() {
+  try {
+    const result = await window.api.uploadSignature();
+    if (result) {
+      showToast('Unterschrift hochgeladen', 'success');
+      await renderSignaturePreview();
+    }
+  } catch (err) {
+    showToast('Fehler: ' + err.message, 'error');
+  }
+}
+
+async function removeSignature() {
+  await window.api.removeSignature();
+  await renderSignaturePreview();
+  showToast('Unterschrift entfernt');
 }
 
 async function chooseDataPath() {
@@ -2331,10 +2367,15 @@ async function generateSammelquittung() {
     const logoPath = await window.api.getLogo();
     if (logoPath) logoData = await window.api.readLogoBase64(logoPath);
 
+    let signatureData = null;
+    const sigPath = await window.api.getSignature();
+    if (sigPath) signatureData = await window.api.readSignatureBase64(sigPath);
+
     const pdfBytes = await generateDonationReceiptPDF({
       donations,
       settings,
       logoData,
+      signatureData,
       isSammel: true,
       year,
     });
@@ -2359,10 +2400,15 @@ async function exportDonationPDF(donationId) {
     const logoPath = await window.api.getLogo();
     if (logoPath) logoData = await window.api.readLogoBase64(logoPath);
 
+    let signatureData = null;
+    const sigPath = await window.api.getSignature();
+    if (sigPath) signatureData = await window.api.readSignatureBase64(sigPath);
+
     const pdfBytes = await generateDonationReceiptPDF({
       donations: [donation],
       settings,
       logoData,
+      signatureData,
       isSammel: false,
     });
 

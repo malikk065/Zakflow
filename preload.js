@@ -8,6 +8,12 @@ contextBridge.exposeInMainWorld('api', {
   getLogo: () => ipcRenderer.invoke('settings:getLogo'),
   readLogoBase64: (logoPath) => ipcRenderer.invoke('settings:readLogoBase64', logoPath),
 
+  // Signature
+  uploadSignature: () => ipcRenderer.invoke('settings:uploadSignature'),
+  getSignature: () => ipcRenderer.invoke('settings:getSignature'),
+  removeSignature: () => ipcRenderer.invoke('settings:removeSignature'),
+  readSignatureBase64: (sigPath) => ipcRenderer.invoke('settings:readSignatureBase64', sigPath),
+
   // Customers
   getCustomers: () => ipcRenderer.invoke('customers:getAll'),
   saveCustomers: (customers) => ipcRenderer.invoke('customers:save', customers),
