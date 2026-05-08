@@ -269,51 +269,113 @@
     <main class="content">
       <!-- Dashboard -->
       <section id="tab-dashboard" class="tab-content active">
-        <div class="tab-header">
-          <h2>Dashboard</h2>
-        </div>
-        <div class="stats-row">
-          <div class="stat-card">
-            <div class="stat-value" id="stat-total">0</div>
-            <div class="stat-label">Rechnungen gesamt</div>
+        <!-- Welcome -->
+        <div class="dash-welcome">
+          <div>
+            <h2 class="dash-greeting" id="dash-greeting">Guten Tag</h2>
+            <p class="dash-subtitle" id="dash-subtitle">Hier ist deine Übersicht</p>
           </div>
-          <div class="stat-card">
-            <div class="stat-value" id="stat-open">0</div>
-            <div class="stat-label">Offen</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="stat-paid">0</div>
-            <div class="stat-label">Bezahlt</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="stat-revenue">0,00 €</div>
-            <div class="stat-label">Umsatz (bezahlt)</div>
+          <div class="dash-quick-actions">
+            <button class="btn btn-primary" onclick="switchTab('new-invoice')">+ Rechnung</button>
+            <button class="btn" onclick="switchTab('expenses'); setTimeout(() => showExpenseForm && showExpenseForm(), 100)">+ Ausgabe</button>
+            <button class="btn" onclick="switchTab('donations'); setTimeout(() => showDonationForm && showDonationForm(), 100)">+ Spende</button>
           </div>
         </div>
-        <div class="section-header">
-          <h3>Letzte Rechnungen</h3>
-          <button class="btn btn-small" onclick="importPDFInvoices()">📥 PDFs importieren</button>
+
+        <!-- Stats -->
+        <div class="dash-stats">
+          <div class="dash-stat-card dash-stat-blue">
+            <div class="dash-stat-icon">📊</div>
+            <div class="dash-stat-content">
+              <div class="dash-stat-value" id="stat-revenue">0,00 €</div>
+              <div class="dash-stat-label">Umsatz (bezahlt)</div>
+            </div>
+          </div>
+          <div class="dash-stat-card dash-stat-green">
+            <div class="dash-stat-icon">✅</div>
+            <div class="dash-stat-content">
+              <div class="dash-stat-value" id="stat-paid">0</div>
+              <div class="dash-stat-label">Bezahlt</div>
+            </div>
+          </div>
+          <div class="dash-stat-card dash-stat-orange">
+            <div class="dash-stat-icon">⏳</div>
+            <div class="dash-stat-content">
+              <div class="dash-stat-value" id="stat-open">0</div>
+              <div class="dash-stat-label">Offene Rechnungen</div>
+            </div>
+          </div>
+          <div class="dash-stat-card dash-stat-purple">
+            <div class="dash-stat-icon">🤲</div>
+            <div class="dash-stat-content">
+              <div class="dash-stat-value" id="stat-dash-donations">0,00 €</div>
+              <div class="dash-stat-label">Spenden (dieses Jahr)</div>
+            </div>
+          </div>
         </div>
-        <div class="search-bar">
-          <input type="text" id="search-invoices" placeholder="Rechnungen durchsuchen (Nr., Kunde, Betrag...)" oninput="filterInvoices()">
-        </div>
-        <table class="data-table" id="invoices-table">
-          <thead>
-            <tr>
-              <th>Nr.</th>
-              <th>Datum</th>
-              <th>Kunde</th>
-              <th>Betrag</th>
-              <th>Status</th>
-              <th>Aktionen</th>
-            </tr>
-          </thead>
-          <tbody id="invoices-tbody">
-          </tbody>
-        </table>
-        <div class="empty-state" id="dashboard-empty">
-          <p>Noch keine Rechnungen erstellt.</p>
-          <button class="btn btn-primary" onclick="switchTab('new-invoice')">Erste Rechnung erstellen</button>
+
+        <!-- Two-column layout -->
+        <div class="dash-grid">
+          <!-- Left: Rechnungen -->
+          <div class="dash-panel">
+            <div class="dash-panel-header">
+              <h3>Letzte Rechnungen</h3>
+              <div style="display:flex;gap:6px;">
+                <button class="btn btn-small" onclick="importPDFInvoices()">📥 Import</button>
+                <button class="btn btn-small" onclick="switchTab('new-invoice')">+ Neu</button>
+              </div>
+            </div>
+            <div class="search-bar" style="margin-bottom:12px;">
+              <input type="text" id="search-invoices" placeholder="Rechnungen durchsuchen..." oninput="filterInvoices()">
+            </div>
+            <table class="data-table" id="invoices-table">
+              <thead>
+                <tr>
+                  <th>Nr.</th>
+                  <th>Datum</th>
+                  <th>Kunde</th>
+                  <th>Betrag</th>
+                  <th>Status</th>
+                  <th>Aktionen</th>
+                </tr>
+              </thead>
+              <tbody id="invoices-tbody"></tbody>
+            </table>
+            <div class="empty-state" id="dashboard-empty" style="padding:24px;">
+              <p>Noch keine Rechnungen erstellt.</p>
+              <button class="btn btn-primary" onclick="switchTab('new-invoice')">Erste Rechnung erstellen</button>
+            </div>
+          </div>
+
+          <!-- Right: Activity sidebar -->
+          <div class="dash-sidebar">
+            <!-- Nächste Termine -->
+            <div class="dash-panel dash-panel-compact">
+              <div class="dash-panel-header">
+                <h3>📅 Nächste Termine</h3>
+                <button class="btn btn-small" onclick="switchTab('calendar')">Alle</button>
+              </div>
+              <div id="dash-upcoming-events"></div>
+            </div>
+
+            <!-- Letzte Ausgaben -->
+            <div class="dash-panel dash-panel-compact">
+              <div class="dash-panel-header">
+                <h3>💸 Letzte Ausgaben</h3>
+                <button class="btn btn-small" onclick="switchTab('expenses')">Alle</button>
+              </div>
+              <div id="dash-recent-expenses"></div>
+            </div>
+
+            <!-- Letzte Spenden -->
+            <div class="dash-panel dash-panel-compact">
+              <div class="dash-panel-header">
+                <h3>🤲 Letzte Spenden</h3>
+                <button class="btn btn-small" onclick="switchTab('donations')">Alle</button>
+              </div>
+              <div id="dash-recent-donations"></div>
+            </div>
+          </div>
         </div>
       </section>
 

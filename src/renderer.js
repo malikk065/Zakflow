@@ -352,24 +352,40 @@ function formatDate(dateStr) {
 // DASHBOARD
 // ==========================
 function renderDashboard() {
+  // Greeting
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend';
+  const greetEl = document.getElementById('dash-greeting');
+  if (greetEl) greetEl.textContent = greeting;
+
+  const orgName = store.settings && store.settings.company && store.settings.company.name;
+  const subtitleEl = document.getElementById('dash-subtitle');
+  if (subtitleEl) subtitleEl.textContent = orgName ? `Übersicht — ${orgName}` : 'Hier ist deine Übersicht';
+
+  // Stats
   const invoices = store.invoices;
-  const total = invoices.length;
   const open = invoices.filter((i) => i.status === 'offen').length;
   const paid = invoices.filter((i) => i.status === 'bezahlt').length;
 
   let revenue = 0;
-  invoices
-    .filter((i) => i.status === 'bezahlt')
-    .forEach((i) => {
-      const totals = store.calculateInvoiceTotal(i);
-      revenue += totals.brutto;
-    });
+  invoices.filter((i) => i.status === 'bezahlt').forEach((i) => {
+    const totals = store.calculateInvoiceTotal(i);
+    revenue += totals.brutto;
+  });
 
-  document.getElementById('stat-total').textContent = total;
   document.getElementById('stat-open').textContent = open;
   document.getElementById('stat-paid').textContent = paid;
   document.getElementById('stat-revenue').textContent = formatCurrency(revenue);
 
+  // Spenden dieses Jahr
+  const now = new Date();
+  const yearDonations = (store.donations || [])
+    .filter(d => new Date(d.date).getFullYear() === now.getFullYear())
+    .reduce((s, d) => s + (d.amount || 0), 0);
+  const donEl = document.getElementById('stat-dash-donations');
+  if (donEl) donEl.textContent = formatCurrency(yearDonations);
+
+  // --- Invoices table ---
   const tbody = document.getElementById('invoices-tbody');
   const empty = document.getElementById('dashboard-empty');
   const table = document.getElementById('invoices-table');
@@ -377,45 +393,102 @@ function renderDashboard() {
   if (invoices.length === 0) {
     table.style.display = 'none';
     empty.style.display = 'block';
-    return;
-  }
+  } else {
+    table.style.display = '';
+    empty.style.display = 'none';
 
-  table.style.display = '';
-  empty.style.display = 'none';
-
-  // Sort by date descending
-  const sorted = [...invoices].sort(
-    (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-  );
-
-  tbody.innerHTML = sorted
-    .map((inv) => {
+    const sorted = [...invoices].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    tbody.innerHTML = sorted.map((inv) => {
       const totals = store.calculateInvoiceTotal(inv);
       const customer = store.getCustomer(inv.customerId);
-      const statusClass =
-        inv.status === 'bezahlt'
-          ? 'badge-paid'
-          : inv.status === 'storniert'
-          ? 'badge-cancelled'
-          : 'badge-open';
-
+      const statusClass = inv.status === 'bezahlt' ? 'badge-paid' : inv.status === 'storniert' ? 'badge-cancelled' : 'badge-open';
       const isGutschrift = inv.type === 'gutschrift';
       return `<tr>
-      <td><strong>${inv.number}</strong></td>
-      <td>${formatDate(inv.date)}</td>
-      <td>${customer ? customer.name : 'Unbekannt'}</td>
-      <td>${isGutschrift ? '-' : ''}${formatCurrency(totals.brutto)}</td>
-      <td><span class="badge ${isGutschrift ? 'badge-credit' : statusClass}">${isGutschrift ? 'Gutschrift' : inv.status}</span></td>
-      <td>
-        <button class="btn-icon" title="PDF exportieren" onclick="exportInvoicePDF('${inv.id}')">&#128196;</button>
-        <button class="btn-icon" title="Bearbeiten" onclick="editInvoice('${inv.id}')">&#9998;</button>
-        <button class="btn-icon" title="Status ändern" onclick="toggleInvoiceStatus('${inv.id}')">&#10003;</button>
-        ${!isGutschrift ? `<button class="btn-icon" title="Gutschrift erstellen" onclick="createGutschrift('${inv.id}')">↩</button>` : ''}
-        <button class="btn-icon" title="Löschen" onclick="deleteInvoice('${inv.id}')">&#128465;</button>
-      </td>
-    </tr>`;
-    })
-    .join('');
+        <td><strong>${inv.number}</strong></td>
+        <td>${formatDate(inv.date)}</td>
+        <td>${customer ? customer.name : 'Unbekannt'}</td>
+        <td>${isGutschrift ? '-' : ''}${formatCurrency(totals.brutto)}</td>
+        <td><span class="badge ${isGutschrift ? 'badge-credit' : statusClass}">${isGutschrift ? 'Gutschrift' : inv.status}</span></td>
+        <td>
+          <button class="btn-icon" title="PDF exportieren" onclick="exportInvoicePDF('${inv.id}')">&#128196;</button>
+          <button class="btn-icon" title="Bearbeiten" onclick="editInvoice('${inv.id}')">&#9998;</button>
+          <button class="btn-icon" title="Status ändern" onclick="toggleInvoiceStatus('${inv.id}')">&#10003;</button>
+          ${!isGutschrift ? `<button class="btn-icon" title="Gutschrift erstellen" onclick="createGutschrift('${inv.id}')">↩</button>` : ''}
+          <button class="btn-icon" title="Löschen" onclick="deleteInvoice('${inv.id}')">&#128465;</button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  // --- Upcoming Events ---
+  const eventsEl = document.getElementById('dash-upcoming-events');
+  if (eventsEl) {
+    const todayStr = now.toISOString().split('T')[0];
+    const upcoming = (store.events || [])
+      .filter(e => e.date >= todayStr)
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || ''))
+      .slice(0, 4);
+
+    if (upcoming.length === 0) {
+      eventsEl.innerHTML = '<div class="dash-empty-hint">Keine anstehenden Termine</div>';
+    } else {
+      eventsEl.innerHTML = upcoming.map(ev => `
+        <div class="dash-activity-item">
+          <div class="dash-activity-icon"><span class="calendar-event-dot cat-${ev.category || 'sonstiges'}" style="padding:2px 0;background:transparent;color:inherit;font-size:16px;">${ev.category === 'gebet' ? '🕌' : ev.category === 'sitzung' ? '📋' : ev.category === 'veranstaltung' ? '🎉' : ev.category === 'kurs' ? '📖' : ev.category === 'feiertag' ? '🌙' : '📌'}</span></div>
+          <div class="dash-activity-info">
+            <div class="dash-activity-title">${escapeHtml(ev.title)}</div>
+            <div class="dash-activity-meta">${formatDate(ev.date)}${ev.time ? ' · ' + ev.time + ' Uhr' : ''}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+
+  // --- Recent Expenses ---
+  const expensesEl = document.getElementById('dash-recent-expenses');
+  if (expensesEl) {
+    const recentExp = [...(store.expenses || [])]
+      .sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt))
+      .slice(0, 4);
+
+    if (recentExp.length === 0) {
+      expensesEl.innerHTML = '<div class="dash-empty-hint">Keine Ausgaben erfasst</div>';
+    } else {
+      expensesEl.innerHTML = recentExp.map(exp => `
+        <div class="dash-activity-item">
+          <div class="dash-activity-icon">💸</div>
+          <div class="dash-activity-info">
+            <div class="dash-activity-title">${escapeHtml(exp.description || '—')}</div>
+            <div class="dash-activity-meta">${formatDate(exp.date)}</div>
+          </div>
+          <div class="dash-activity-amount" style="color:var(--danger);">-${formatCurrency(exp.amount)}</div>
+        </div>
+      `).join('');
+    }
+  }
+
+  // --- Recent Donations ---
+  const donationsEl = document.getElementById('dash-recent-donations');
+  if (donationsEl) {
+    const recentDon = [...(store.donations || [])]
+      .sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt))
+      .slice(0, 4);
+
+    if (recentDon.length === 0) {
+      donationsEl.innerHTML = '<div class="dash-empty-hint">Keine Spenden erfasst</div>';
+    } else {
+      donationsEl.innerHTML = recentDon.map(don => `
+        <div class="dash-activity-item">
+          <div class="dash-activity-icon">🤲</div>
+          <div class="dash-activity-info">
+            <div class="dash-activity-title">${escapeHtml(don.donorName || '—')}</div>
+            <div class="dash-activity-meta">${formatDate(don.date)}${don.purpose ? ' · ' + escapeHtml(don.purpose) : ''}</div>
+          </div>
+          <div class="dash-activity-amount" style="color:var(--success);">+${formatCurrency(don.amount)}</div>
+        </div>
+      `).join('');
+    }
+  }
 }
 
 async function toggleInvoiceStatus(id) {
