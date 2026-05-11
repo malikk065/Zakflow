@@ -24,15 +24,20 @@
       "build/icon.png"
     ],
     "mac": {
-      "target": {
-        "target": "dmg",
-        "arch": [
-          "x64",
-          "arm64"
-        ]
-      },
-      "category": "public.app-category.finance"
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "category": "public.app-category.finance",
+      "identity": null
     },
+    "afterPack": "./scripts/after-pack.js",
     "win": {
       "target": {
         "target": "nsis",
