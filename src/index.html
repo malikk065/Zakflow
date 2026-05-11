@@ -1467,8 +1467,38 @@
     </div>
   </div>
 
-  <!-- Toast Notification -->
-  <div class="toast" id="toast"></div>
+  <!-- Toast Stack -->
+  <div class="toast-container" id="toast-container"></div>
+  <div class="toast" id="toast" style="display:none;"></div>
+
+  <!-- Confirm Dialog -->
+  <div class="confirm-overlay" id="confirm-overlay">
+    <div class="confirm-box">
+      <div class="confirm-icon" id="confirm-icon">⚠️</div>
+      <div class="confirm-title" id="confirm-title">Bist du sicher?</div>
+      <div class="confirm-message" id="confirm-message"></div>
+      <div class="confirm-actions">
+        <button class="btn btn-ghost" id="confirm-cancel">Abbrechen</button>
+        <button class="btn-danger" id="confirm-ok">Löschen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PDF Preview -->
+  <div class="pdf-preview-overlay" id="pdf-preview-overlay">
+    <div class="pdf-preview-container">
+      <div class="pdf-preview-header">
+        <h3 id="pdf-preview-title">PDF Vorschau</h3>
+        <div class="pdf-preview-actions">
+          <button class="btn btn-primary" id="pdf-preview-save" onclick="pdfPreviewSave()">💾 Speichern unter...</button>
+          <button class="btn-close" onclick="closePdfPreview()">&times;</button>
+        </div>
+      </div>
+      <div class="pdf-preview-body">
+        <iframe id="pdf-preview-frame"></iframe>
+      </div>
+    </div>
+  </div>
 
   <script>window._scriptErrors = [];</script>
   <script src="../node_modules/pdf-lib/dist/pdf-lib.min.js" onerror="window._scriptErrors.push('pdf-lib')"></script>

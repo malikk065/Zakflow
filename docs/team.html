@@ -191,9 +191,10 @@
 
     // URL-Parameter lesen
     const params = new URLSearchParams(window.location.search);
-    const encodedConfig = params.get('c');
+    let encodedConfig = params.get('c');
     teamId = params.get('t');
     orgId = params.get('o');
+    const linkId = params.get('l'); // Kurzlink
 
     // Org-scoped Collection Helper
     function col(name) {
@@ -203,6 +204,19 @@
     function settingsDoc() {
       if (orgId) return db.collection('orgs').doc(orgId).collection('meta').doc('settings');
       return db.collection('app').doc('settings');
+    }
+
+    // Dekomprimiert Firebase Config (unterstützt altes + neues Format)
+    function decompressConfig(c) {
+      if (c.apiKey) return c;
+      return {
+        apiKey: c.a,
+        authDomain: c.p + '.firebaseapp.com',
+        projectId: c.p,
+        storageBucket: c.p + '.firebasestorage.app',
+        messagingSenderId: c.m,
+        appId: c.i,
+      };
     }
 
     const DEFAULT_CATEGORIES = {
@@ -234,14 +248,25 @@
     }
 
     async function init() {
-      if (!encodedConfig || !teamId) {
+      if (!linkId && (!encodedConfig || !teamId)) {
         showState('invalid');
         return;
       }
 
       try {
-        // Config dekodieren
-        const config = JSON.parse(atob(encodedConfig));
+        let config;
+
+        if (linkId) {
+          // Neues komprimiertes Format: alle Daten in einem Parameter
+          const linkData = JSON.parse(decodeURIComponent(escape(atob(linkId))));
+          config = decompressConfig(linkData.c);
+          teamId = linkData.t;
+          orgId = linkData.o || null;
+        } else {
+          // Altes Format: separate Parameter
+          config = JSON.parse(atob(encodedConfig));
+        }
+
         firebase.initializeApp(config);
         db = firebase.firestore();
 

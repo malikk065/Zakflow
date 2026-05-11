@@ -324,14 +324,100 @@ function switchTab(tabName) {
   if (tabName === 'orgs') renderOrgsList();
 }
 
-// --- Toast ---
-function showToast(message, type = '') {
-  const toast = document.getElementById('toast');
-  toast.textContent = message;
-  toast.className = 'toast show ' + type;
+// --- Toast (New) ---
+function showToast(message, type = '', duration = 3500) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+  const toastType = type || 'info';
+  const icon = icons[toastType] || icons.info;
+
+  const el = document.createElement('div');
+  el.className = `toast-item toast-${toastType}`;
+  el.innerHTML = `
+    <span class="toast-icon">${icon}</span>
+    <span class="toast-text">${message}</span>
+    <button class="toast-close" onclick="this.parentElement.classList.replace('show','hiding');setTimeout(()=>this.parentElement.remove(),350)">&times;</button>
+    <div class="toast-progress" style="animation-duration:${duration}ms"></div>
+  `;
+  container.appendChild(el);
+
+  // Trigger animation
+  requestAnimationFrame(() => el.classList.add('show'));
+
+  // Auto-remove
   setTimeout(() => {
-    toast.className = 'toast';
-  }, 3000);
+    if (el.parentElement) {
+      el.classList.replace('show', 'hiding');
+      setTimeout(() => el.remove(), 350);
+    }
+  }, duration);
+}
+
+// --- Confirm Dialog ---
+function showConfirm({ title, message, icon, confirmText, confirmClass, onConfirm }) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('confirm-overlay');
+    const iconEl = document.getElementById('confirm-icon');
+    const titleEl = document.getElementById('confirm-title');
+    const msgEl = document.getElementById('confirm-message');
+    const okBtn = document.getElementById('confirm-ok');
+    const cancelBtn = document.getElementById('confirm-cancel');
+
+    iconEl.textContent = icon || '⚠️';
+    titleEl.textContent = title || 'Bist du sicher?';
+    msgEl.textContent = message || '';
+    okBtn.textContent = confirmText || 'Löschen';
+    okBtn.className = confirmClass || 'btn-danger';
+
+    function cleanup(result) {
+      overlay.classList.remove('active');
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      overlay.removeEventListener('click', onOverlay);
+      resolve(result);
+    }
+    function onOk() { cleanup(true); }
+    function onCancel() { cleanup(false); }
+    function onOverlay(e) { if (e.target === overlay) cleanup(false); }
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    overlay.addEventListener('click', onOverlay);
+    overlay.classList.add('active');
+  });
+}
+
+// --- PDF Preview ---
+let _pdfPreviewBytes = null;
+let _pdfPreviewName = null;
+
+function showPdfPreview(pdfBytes, title, fileName) {
+  _pdfPreviewBytes = pdfBytes;
+  _pdfPreviewName = fileName;
+  const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  document.getElementById('pdf-preview-title').textContent = title || 'PDF Vorschau';
+  document.getElementById('pdf-preview-frame').src = url;
+  document.getElementById('pdf-preview-overlay').classList.add('active');
+}
+
+function closePdfPreview() {
+  const frame = document.getElementById('pdf-preview-frame');
+  if (frame.src) URL.revokeObjectURL(frame.src);
+  frame.src = '';
+  document.getElementById('pdf-preview-overlay').classList.remove('active');
+  _pdfPreviewBytes = null;
+  _pdfPreviewName = null;
+}
+
+async function pdfPreviewSave() {
+  if (!_pdfPreviewBytes || !_pdfPreviewName) return;
+  const savedPath = await window.api.savePDF(_pdfPreviewBytes, _pdfPreviewName);
+  if (savedPath) {
+    showToast(`PDF gespeichert: ${savedPath.split('/').pop()}`, 'success');
+  }
 }
 
 // --- Format helpers ---
@@ -501,10 +587,11 @@ async function toggleInvoiceStatus(id) {
 }
 
 async function deleteInvoice(id) {
-  if (!confirm('Rechnung wirklich löschen?')) return;
+  const ok = await showConfirm({ title: 'Rechnung löschen', message: 'Die Rechnung wird unwiderruflich gelöscht.', icon: '🗑️', confirmText: 'Löschen' });
+  if (!ok) return;
   await store.deleteInvoice(id);
   renderDashboard();
-  showToast('Rechnung gelöscht');
+  showToast('Rechnung gelöscht', 'success');
 }
 
 function editInvoice(id) {
@@ -871,15 +958,11 @@ async function exportInvoicePDF(invoiceId, skipDialog = false) {
     const autoPath = await window.api.saveAutoPDF(pdfBytes, inv.number);
 
     if (!skipDialog) {
-      // Zusätzlich Speichern-Dialog für manuelles Speichern
-      const savedPath = await window.api.savePDF(pdfBytes, inv.number);
-      if (savedPath) {
-        showToast(`PDF gespeichert: ${savedPath.split('/').pop()}`, 'success');
-      } else {
-        showToast(`PDF gespeichert in OneDrive: ${inv.number}.pdf`, 'success');
-      }
+      // PDF-Vorschau anzeigen
+      showPdfPreview(pdfBytes, `Rechnung ${inv.number}`, inv.number);
+      showToast(`PDF gespeichert: ${inv.number}.pdf`, 'success');
     } else {
-      showToast(`PDF gespeichert in OneDrive: ${inv.number}.pdf`, 'success');
+      showToast(`PDF gespeichert: ${inv.number}.pdf`, 'success');
     }
 
     return autoPath;
@@ -953,10 +1036,11 @@ function editCustomer(id) {
 }
 
 async function deleteCustomer(id) {
-  if (!confirm('Kunden wirklich löschen?')) return;
+  const ok = await showConfirm({ title: 'Kunde löschen', message: 'Der Kunde wird unwiderruflich gelöscht.', icon: '🗑️', confirmText: 'Löschen' });
+  if (!ok) return;
   await store.deleteCustomer(id);
   renderCustomersList();
-  showToast('Kunde gelöscht');
+  showToast('Kunde gelöscht', 'success');
 }
 
 async function saveCustomer() {
@@ -1511,7 +1595,8 @@ async function createGutschrift(invoiceId) {
   const inv = store.getInvoice(invoiceId);
   if (!inv) return;
 
-  if (!confirm(`Gutschrift für Rechnung ${inv.number} erstellen?`)) return;
+  const ok = await showConfirm({ title: 'Gutschrift erstellen', message: `Gutschrift für Rechnung ${inv.number} erstellen?`, icon: '📄', confirmText: 'Erstellen', confirmClass: 'btn btn-primary' });
+  if (!ok) return;
 
   const gutschriftData = {
     customerId: inv.customerId,
@@ -2179,7 +2264,8 @@ function editExpense(id) {
 }
 
 async function deleteExpense(id) {
-  if (!confirm('Ausgabe wirklich löschen?')) return;
+  const ok = await showConfirm({ title: 'Ausgabe löschen', message: 'Die Ausgabe wird unwiderruflich gelöscht.', icon: '🗑️', confirmText: 'Löschen' });
+  if (!ok) return;
   await store.deleteExpense(id);
   renderExpensesList();
   renderTeamsList();
@@ -2299,10 +2385,11 @@ async function saveDonation() {
 }
 
 async function deleteDonation(id) {
-  if (!confirm('Spende wirklich löschen?')) return;
+  const ok = await showConfirm({ title: 'Spende löschen', message: 'Die Spende wird unwiderruflich gelöscht.', icon: '🗑️', confirmText: 'Löschen' });
+  if (!ok) return;
   await store.deleteDonation(id);
   renderDonationsList();
-  showToast('Spende gelöscht');
+  showToast('Spende gelöscht', 'success');
 }
 
 function renderDonationsList() {
@@ -2455,6 +2542,7 @@ async function generateSammelquittung() {
 
     const fileName = `Sammelbestätigung_${donor.replace(/[^a-zA-Z0-9äöüÄÖÜß]/g, '_')}_${year}`;
     await window.api.saveAutoPDF(pdfBytes, fileName);
+    showPdfPreview(pdfBytes, `Sammelbestätigung — ${donor} (${year})`, fileName);
     showToast(`Sammelbestätigung für ${donor} erstellt`, 'success');
     closeSammelquittungModal();
   } catch (err) {
@@ -2486,7 +2574,9 @@ async function exportDonationPDF(donationId) {
     });
 
     const fileName = donation.number || `Spendenquittung_${donation.donorName}`;
-    await window.api.saveAutoPDF(pdfBytes, fileName.replace(/[^a-zA-Z0-9äöüÄÖÜß_-]/g, '_'));
+    const cleanName = fileName.replace(/[^a-zA-Z0-9äöüÄÖÜß_-]/g, '_');
+    await window.api.saveAutoPDF(pdfBytes, cleanName);
+    showPdfPreview(pdfBytes, `Spendenquittung — ${donation.donorName}`, cleanName);
     showToast('Spendenquittung als PDF gespeichert', 'success');
   } catch (err) {
     console.error('Spendenquittung PDF Fehler:', err);
@@ -2586,7 +2676,8 @@ async function saveContact() {
 }
 
 async function deleteContact(id) {
-  if (!confirm('Kontakt wirklich löschen?')) return;
+  const ok = await showConfirm({ title: 'Kontakt löschen', message: 'Der Kontakt wird unwiderruflich gelöscht.', icon: '🗑️', confirmText: 'Löschen' });
+  if (!ok) return;
   await store.deleteContact(id);
   renderContactsList();
   showToast('Kontakt gelöscht');
@@ -2697,7 +2788,8 @@ async function openDocument(id) {
 }
 
 async function deleteDocument(id) {
-  if (!confirm('Dokument wirklich löschen?')) return;
+  const ok = await showConfirm({ title: 'Dokument löschen', message: 'Das Dokument wird unwiderruflich gelöscht.', icon: '🗑️', confirmText: 'Löschen' });
+  if (!ok) return;
   const doc = store.documents.find(d => d.id === id);
   if (doc && doc.filePath) {
     await window.api.deleteDocumentFile(doc.filePath);
@@ -2983,7 +3075,8 @@ async function saveEvent() {
 }
 
 async function deleteEvent(id) {
-  if (!confirm('Termin wirklich löschen?')) return;
+  const ok = await showConfirm({ title: 'Termin löschen', message: 'Der Termin wird unwiderruflich gelöscht.', icon: '🗑️', confirmText: 'Löschen' });
+  if (!ok) return;
   await store.deleteEvent(id);
   renderCalendar();
   showToast('Termin gelöscht');
@@ -3091,21 +3184,17 @@ function showTeamLink(teamId) {
   const team = teams.find(t => t.id === teamId);
   if (!team) return;
 
-  // Firebase Config für den Link kodieren
   const config = firebase.app().options;
-  const encodedConfig = btoa(JSON.stringify({
-    apiKey: config.apiKey,
-    authDomain: config.authDomain,
-    projectId: config.projectId,
-    storageBucket: config.storageBucket,
-    messagingSenderId: config.messagingSenderId,
-    appId: config.appId,
-  }));
-
-  // URL bauen (GitHub Pages) — mit orgId für org-scoped Teams
   const baseUrl = 'https://malikk065.github.io/Zakflow/docs/team.html';
-  const orgParam = store.currentOrgId ? `&o=${store.currentOrgId}` : '';
-  const url = `${baseUrl}?t=${teamId}&c=${encodedConfig}${orgParam}`;
+
+  // Komprimierter Link: alle Daten in einem Parameter
+  const linkData = {
+    c: compressFirebaseConfig(config),
+    t: teamId,
+    o: store.currentOrgId || '',
+  };
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(linkData))));
+  const url = `${baseUrl}?l=${encoded}`;
 
   document.getElementById('team-link-url').value = url;
   document.getElementById('team-link-modal').classList.add('active');
@@ -3129,7 +3218,8 @@ function copyTeamLink() {
 
 async function deleteTeam(id) {
   const team = teams.find(t => t.id === id);
-  if (!confirm(`Team "${team ? team.name : ''}" wirklich löschen? Die Ausgaben bleiben erhalten.`)) return;
+  const ok = await showConfirm({ title: 'Team löschen', message: `"${team ? team.name : ''}" wird gelöscht. Die Ausgaben bleiben erhalten.`, icon: '👥', confirmText: 'Löschen' });
+  if (!ok) return;
 
   try {
     await store._col('teams').doc(id).delete();
@@ -3703,7 +3793,8 @@ async function saveOrg() {
 async function deleteOrg(orgId) {
   if (store.userRole !== 'admin') { showToast('Nur Admins können Vereine löschen', 'error'); return; }
   const org = store.allOrgs.find(o => o.id === orgId);
-  if (!confirm(`Verein "${org ? org.name : ''}" wirklich löschen?\n\nAlle Daten dieses Vereins werden gelöscht!`)) return;
+  const ok = await showConfirm({ title: 'Verein löschen', message: `"${org ? org.name : ''}" und ALLE zugehörigen Daten werden unwiderruflich gelöscht!`, icon: '⚠️', confirmText: 'Endgültig löschen' });
+  if (!ok) return;
 
   await store.deleteOrg(orgId);
 
@@ -3791,30 +3882,50 @@ async function addOrgMember() {
 
 async function removeOrgMember(email, orgId) {
   if (store.userRole !== 'admin') { showToast('Nur Admins können Mitglieder entfernen', 'error'); return; }
-  if (!confirm(`${email} aus dem Verein entfernen?`)) return;
+  const ok = await showConfirm({ title: 'Mitglied entfernen', message: `${email} aus dem Verein entfernen?`, icon: '👤', confirmText: 'Entfernen' });
+  if (!ok) return;
   await store.removeUserFromOrg(email, orgId);
   renderOrgsList();
-  showToast('Mitglied entfernt');
+  showToast('Mitglied entfernt', 'success');
 }
 
 // --- Einladungssystem ---
+
+// Komprimiert Firebase Config (entfernt ableitbare Felder)
+function compressFirebaseConfig(config) {
+  return {
+    a: config.apiKey,
+    p: config.projectId,
+    m: config.messagingSenderId,
+    i: config.appId,
+    // authDomain + storageBucket werden aus projectId abgeleitet
+  };
+}
+
+// Dekomprimiert Firebase Config
+function decompressFirebaseConfig(c) {
+  // Unterstützt sowohl altes (volles) als auch neues (komprimiertes) Format
+  if (c.apiKey) return c; // Altes Format
+  return {
+    apiKey: c.a,
+    authDomain: c.p + '.firebaseapp.com',
+    projectId: c.p,
+    storageBucket: c.p + '.firebasestorage.app',
+    messagingSenderId: c.m,
+    appId: c.i,
+  };
+}
+
 function showInviteCode(orgId) {
   if (store.userRole !== 'admin') { showToast('Nur Admins können einladen', 'error'); return; }
 
   const org = store.allOrgs.find(o => o.id === orgId);
   if (!org) return;
 
-  // Einladungscode = Base64-kodierte Firebase Config + Org-ID
+  // Komprimierter Einladungscode
   const config = firebase.app().options;
   const inviteData = {
-    c: {
-      apiKey: config.apiKey,
-      authDomain: config.authDomain,
-      projectId: config.projectId,
-      storageBucket: config.storageBucket,
-      messagingSenderId: config.messagingSenderId,
-      appId: config.appId,
-    },
+    c: compressFirebaseConfig(config),
     o: orgId,
     n: org.name,
   };
@@ -3858,10 +3969,13 @@ async function joinWithInvite() {
     return;
   }
 
-  if (!inviteData.c || !inviteData.c.apiKey || !inviteData.c.projectId) {
+  if (!inviteData.c || (!inviteData.c.apiKey && !inviteData.c.a)) {
     showAuthError(errorEl, 'Ungültiger Einladungscode – Daten fehlen');
     return;
   }
+
+  // Config dekomprimieren (unterstützt altes + neues Format)
+  const firebaseConfig = decompressFirebaseConfig(inviteData.c);
 
   // Firebase verbinden
   const btn = document.querySelector('#invite-paste + .auth-error + .btn-primary') ||
@@ -3869,14 +3983,14 @@ async function joinWithInvite() {
   if (btn) { btn.disabled = true; btn.textContent = 'Verbinde...'; }
 
   try {
-    const success = await initFirebase(inviteData.c);
+    const success = await initFirebase(firebaseConfig);
     if (!success) {
       showAuthError(errorEl, 'Firebase Verbindung fehlgeschlagen');
       return;
     }
 
     // Config speichern
-    await window.api.saveFirebaseConfig(inviteData.c);
+    await window.api.saveFirebaseConfig(firebaseConfig);
     store.useFirebase = true;
 
     // Auth-Listener registrieren (wurde beim Wizard-Flow nicht gesetzt)
