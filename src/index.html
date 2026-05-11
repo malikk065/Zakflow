@@ -11,160 +11,6 @@
   <div class="auth-overlay" id="auth-overlay" style="display:none;">
     <div class="auth-box auth-box-wide">
 
-      <!-- Setup Wizard (mehrstufig) -->
-      <div id="setup-wizard" style="display:none;">
-        <!-- Progress -->
-        <div class="wizard-progress">
-          <div class="wizard-step-indicator active" data-step="1">1</div>
-          <div class="wizard-line"></div>
-          <div class="wizard-step-indicator" data-step="2">2</div>
-          <div class="wizard-line"></div>
-          <div class="wizard-step-indicator" data-step="3">3</div>
-          <div class="wizard-line"></div>
-          <div class="wizard-step-indicator" data-step="4">4</div>
-          <div class="wizard-line"></div>
-          <div class="wizard-step-indicator" data-step="5">5</div>
-          <div class="wizard-line"></div>
-          <div class="wizard-step-indicator" data-step="6">6</div>
-        </div>
-
-        <!-- Step 1: Welcome -->
-        <div class="wizard-step active" data-step="1">
-          <div class="auth-logo" style="font-size:36px;font-weight:900;color:var(--accent);letter-spacing:-2px;">Z</div>
-          <h2 class="auth-title">Willkommen!</h2>
-          <p class="auth-subtitle">Wie möchtest du starten?</p>
-
-          <!-- Option A: Einladungscode -->
-          <div class="wizard-info" style="margin-bottom:16px;">
-            <p style="margin-bottom:10px;"><strong>Einladung erhalten?</strong></p>
-            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">Füge den Code ein, den du vom Admin bekommen hast:</p>
-            <textarea id="invite-paste" rows="3" placeholder="Einladungscode hier einfügen..." style="width:100%;font-family:'SF Mono','Fira Code',monospace;font-size:11px;padding:10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius);resize:none;"></textarea>
-            <div class="auth-error" id="invite-error"></div>
-            <button class="btn btn-primary" type="button" onclick="joinWithInvite()" style="width:100%;margin-top:10px;">Beitreten →</button>
-          </div>
-
-          <!-- Option B: Selbst einrichten -->
-          <div style="text-align:center;color:var(--text-tertiary);font-size:12px;margin:16px 0;">— oder —</div>
-          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">Du bist Admin und richtest alles selbst ein?</p>
-          <button class="btn auth-btn" type="button" onclick="wizardNext()" style="width:100%;">Selbst einrichten (Firebase Setup) →</button>
-        </div>
-
-        <!-- Step 2: Firebase Projekt erstellen -->
-        <div class="wizard-step" data-step="2">
-          <h2 class="auth-title">Firebase-Projekt erstellen</h2>
-          <p class="auth-subtitle">Schritt 1 von 5</p>
-          <div class="wizard-info">
-            <ol style="text-align:left;padding-left:20px;line-height:1.8;">
-              <li>Öffne die <a href="https://console.firebase.google.com" target="_blank" style="color:var(--accent);font-weight:600;">Firebase Console</a></li>
-              <li>Klicke auf <strong>"Projekt hinzufügen"</strong> (Add project)</li>
-              <li>Gib einen Namen ein (z.B. "Rechnungsapp")</li>
-              <li>Google Analytics: kannst du <strong>deaktivieren</strong> (nicht nötig)</li>
-              <li>Klicke <strong>"Projekt erstellen"</strong> und warte 30 Sekunden</li>
-            </ol>
-          </div>
-          <div class="wizard-actions">
-            <button class="btn" type="button" onclick="wizardBack()">← Zurück</button>
-            <button class="btn btn-primary" type="button" onclick="wizardNext()">Weiter →</button>
-          </div>
-        </div>
-
-        <!-- Step 3: Firestore -->
-        <div class="wizard-step" data-step="3">
-          <h2 class="auth-title">Datenbank aktivieren</h2>
-          <p class="auth-subtitle">Schritt 2 von 5 – Firestore</p>
-          <div class="wizard-info">
-            <ol style="text-align:left;padding-left:20px;line-height:1.8;">
-              <li>Im linken Menü: <strong>Build → Firestore Database</strong></li>
-              <li>Klicke <strong>"Datenbank erstellen"</strong> (Create database)</li>
-              <li>Standort wählen: <code>europe-west3</code> (Frankfurt)</li>
-              <li>Modus: <strong>"Im Testmodus starten"</strong> (Test mode)</li>
-              <li>Klicke <strong>"Aktivieren"</strong></li>
-            </ol>
-            <p style="margin-top:12px;font-size:12px;color:var(--text-tertiary);">
-              💡 Testmodus reicht für 30 Tage. Danach kannst du die Regeln anpassen.
-            </p>
-          </div>
-          <div class="wizard-actions">
-            <button class="btn" type="button" onclick="wizardBack()">← Zurück</button>
-            <button class="btn btn-primary" type="button" onclick="wizardNext()">Weiter →</button>
-          </div>
-        </div>
-
-        <!-- Step 4: Authentication -->
-        <div class="wizard-step" data-step="4">
-          <h2 class="auth-title">Login aktivieren</h2>
-          <p class="auth-subtitle">Schritt 3 von 5 – Authentication</p>
-          <div class="wizard-info">
-            <ol style="text-align:left;padding-left:20px;line-height:1.8;">
-              <li>Im linken Menü: <strong>Build → Authentication</strong></li>
-              <li>Klicke <strong>"Jetzt starten"</strong> (Get started)</li>
-              <li>Tab <strong>"Sign-in method"</strong> öffnen</li>
-              <li>Klicke <strong>"E-Mail/Passwort"</strong></li>
-              <li>Aktiviere den Schalter ganz oben → <strong>Speichern</strong></li>
-            </ol>
-            <p style="margin-top:12px;font-size:12px;color:var(--text-tertiary);">
-              ⚠️ Wichtig! Ohne diesen Schritt funktioniert der Login nicht.
-            </p>
-          </div>
-          <div class="wizard-actions">
-            <button class="btn" type="button" onclick="wizardBack()">← Zurück</button>
-            <button class="btn btn-primary" type="button" onclick="wizardNext()">Weiter →</button>
-          </div>
-        </div>
-
-        <!-- Step 5: Web App + Config holen -->
-        <div class="wizard-step" data-step="5">
-          <h2 class="auth-title">Web-App registrieren</h2>
-          <p class="auth-subtitle">Schritt 4 von 5 – Config holen</p>
-          <div class="wizard-info">
-            <ol style="text-align:left;padding-left:20px;line-height:1.8;">
-              <li>Klicke das <strong>⚙️ Zahnrad</strong> (oben links) → <strong>"Projekteinstellungen"</strong></li>
-              <li>Scrolle zu <strong>"Meine Apps"</strong></li>
-              <li>Klicke das <strong>&lt;/&gt; Web-Icon</strong></li>
-              <li>App-Name: z.B. "Rechnungsapp" → <strong>"App registrieren"</strong></li>
-              <li>Du siehst jetzt <code>firebaseConfig</code> mit Werten – die brauchen wir gleich!</li>
-            </ol>
-          </div>
-          <div class="wizard-actions">
-            <button class="btn" type="button" onclick="wizardBack()">← Zurück</button>
-            <button class="btn btn-primary" type="button" onclick="wizardNext()">Weiter →</button>
-          </div>
-        </div>
-
-        <!-- Step 6: Config eingeben -->
-        <div class="wizard-step" data-step="6">
-          <h2 class="auth-title">Config einfügen</h2>
-          <p class="auth-subtitle">Schritt 5 von 5 – Letzter Schritt!</p>
-          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
-            Kopiere den ganzen <code>firebaseConfig</code>-Block hier rein:
-          </p>
-          <textarea id="wiz-fb-paste" class="auth-input" rows="10" placeholder='const firebaseConfig = {
-  apiKey: "AIza...",
-  authDomain: "mein-projekt.firebaseapp.com",
-  projectId: "mein-projekt",
-  storageBucket: "mein-projekt.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123..."
-};' style="font-family:'SF Mono','Fira Code',monospace;font-size:12px;resize:vertical;width:100%;text-align:left;"></textarea>
-          <details style="margin-top:10px;text-align:left;">
-            <summary style="font-size:12px;color:var(--text-tertiary);cursor:pointer;">Oder einzeln eingeben</summary>
-            <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">
-              <input type="text" id="wiz-fb-apiKey" placeholder="apiKey" class="auth-input">
-              <input type="text" id="wiz-fb-authDomain" placeholder="authDomain" class="auth-input">
-              <input type="text" id="wiz-fb-projectId" placeholder="projectId" class="auth-input">
-              <input type="text" id="wiz-fb-storageBucket" placeholder="storageBucket" class="auth-input">
-              <input type="text" id="wiz-fb-messagingSenderId" placeholder="messagingSenderId" class="auth-input">
-              <input type="text" id="wiz-fb-appId" placeholder="appId" class="auth-input">
-            </div>
-          </details>
-          <div class="auth-error" id="wiz-error"></div>
-          <div class="wizard-actions">
-            <button class="btn" type="button" onclick="wizardBack()">← Zurück</button>
-            <button class="btn btn-primary" type="button" onclick="wizardFinish()">Verbinden & weiter →</button>
-          </div>
-        </div>
-      </div>
-
       <!-- Login Form -->
       <div id="auth-login-form" style="display:none;">
         <div class="auth-logo" style="font-size:36px;font-weight:900;color:var(--accent);letter-spacing:-2px;">Z</div>
@@ -186,7 +32,19 @@
       <div id="auth-register-form" style="display:none;">
         <div class="auth-logo" style="font-size:36px;font-weight:900;color:var(--accent);letter-spacing:-2px;">Z</div>
         <h2 class="auth-title">Konto erstellen</h2>
-        <p class="auth-subtitle">Erstelle dein Konto, um zu starten</p>
+        <p class="auth-subtitle">Erstelle dein Zakflow-Konto</p>
+
+        <!-- Einladungscode (optional) -->
+        <div style="margin-bottom:16px;">
+          <details id="invite-details">
+            <summary style="font-size:13px;color:var(--accent);cursor:pointer;font-weight:600;">Einladungscode vorhanden?</summary>
+            <div style="margin-top:8px;">
+              <input type="text" id="invite-paste" placeholder="Einladungscode hier einfügen" style="width:100%;padding:10px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;">
+              <div class="auth-error" id="invite-error"></div>
+            </div>
+          </details>
+        </div>
+
         <div class="auth-field">
           <input type="email" id="auth-reg-email" placeholder="E-Mail" autocomplete="email" onkeydown="if(event.key==='Enter')document.getElementById('auth-reg-password').focus()">
         </div>
@@ -198,7 +56,46 @@
         </div>
         <div class="auth-error" id="auth-reg-error"></div>
         <button class="btn btn-primary auth-btn" onclick="authRegister()">Konto erstellen</button>
+        <p class="auth-switch" style="font-size:11px;color:var(--text-tertiary);margin-top:12px;">Mit der Registrierung akzeptierst du unsere <a href="#" onclick="showPrivacyPolicy(event)">Datenschutzerklärung</a>.</p>
         <p class="auth-switch">Bereits ein Konto? <a href="#" onclick="showAuthLogin()">Anmelden</a></p>
+      </div>
+
+      <!-- Privacy Policy View -->
+      <div id="auth-privacy" style="display:none;">
+        <div class="auth-logo" style="font-size:36px;font-weight:900;color:var(--accent);letter-spacing:-2px;">Z</div>
+        <h2 class="auth-title">Datenschutzerklärung</h2>
+        <div style="max-height:400px;overflow-y:auto;text-align:left;font-size:13px;color:var(--text-secondary);line-height:1.7;padding:16px;background:var(--bg-tertiary);border-radius:var(--radius);margin-bottom:16px;">
+          <p style="font-weight:700;color:var(--text-primary);margin-bottom:12px;">Datenschutzerklärung für Zakflow</p>
+
+          <p style="font-weight:600;margin-top:12px;">1. Verantwortlicher</p>
+          <p>Verantwortlich für die Datenverarbeitung ist der Betreiber der Zakflow-App.</p>
+
+          <p style="font-weight:600;margin-top:12px;">2. Welche Daten werden erhoben?</p>
+          <p>Bei der Registrierung: E-Mail-Adresse und Passwort (verschlüsselt gespeichert).</p>
+          <p>Bei der Nutzung: Rechnungsdaten, Kundendaten, Ausgaben, Spenden, Kontakte, Dokumente und Kalendereinträge, die du selbst eingibst.</p>
+
+          <p style="font-weight:600;margin-top:12px;">3. Zweck der Verarbeitung</p>
+          <p>Deine Daten werden ausschließlich zur Bereitstellung der App-Funktionen verwendet: Rechnungsverwaltung, Ausgabenerfassung, Spendenquittungen und Vereinsverwaltung.</p>
+
+          <p style="font-weight:600;margin-top:12px;">4. Speicherung</p>
+          <p>Deine Daten werden in Google Firebase (Serverstandort: EU/Frankfurt) gespeichert und über eine verschlüsselte Verbindung (SSL/TLS) übertragen. Zusätzlich werden Daten lokal auf deinem Gerät gespeichert.</p>
+
+          <p style="font-weight:600;margin-top:12px;">5. Weitergabe an Dritte</p>
+          <p>Deine Daten werden nicht an Dritte verkauft oder weitergegeben. Die Datenverarbeitung erfolgt über Google Firebase (Google Cloud) als Auftragsverarbeiter gemäß DSGVO.</p>
+
+          <p style="font-weight:600;margin-top:12px;">6. Deine Rechte (DSGVO)</p>
+          <p>Du hast das Recht auf: Auskunft über deine gespeicherten Daten, Berichtigung falscher Daten, Löschung deiner Daten, Datenübertragbarkeit, Widerspruch gegen die Verarbeitung.</p>
+
+          <p style="font-weight:600;margin-top:12px;">7. Löschung</p>
+          <p>Du kannst dein Konto jederzeit löschen. Dabei werden alle deine personenbezogenen Daten unwiderruflich entfernt.</p>
+
+          <p style="font-weight:600;margin-top:12px;">8. Cookies & Tracking</p>
+          <p>Zakflow verwendet keine Cookies, kein Tracking und keine Analyse-Tools. Es werden keine Nutzungsdaten an Dritte übermittelt.</p>
+
+          <p style="font-weight:600;margin-top:12px;">9. Kontakt</p>
+          <p>Bei Fragen zum Datenschutz wende dich an den App-Betreiber.</p>
+        </div>
+        <button class="btn btn-primary auth-btn" onclick="showAuthRegister()">Zurück zur Registrierung</button>
       </div>
     </div>
   </div>
@@ -1375,47 +1272,9 @@
             </div>
           </div>
 
-          <h3>Cloud-Sync (Firebase)</h3>
-          <p style="color:var(--text-secondary);font-size:12px;margin-bottom:12px;">Verbinde deine eigene Firebase-Datenbank, um Daten zwischen Geräten zu synchronisieren.</p>
+          <h3>Cloud-Sync</h3>
           <div id="firebase-status" style="margin-bottom:12px;"></div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>API Key</label>
-              <input type="text" id="fb-apiKey" placeholder="AIzaSy...">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Auth Domain</label>
-              <input type="text" id="fb-authDomain" placeholder="meinprojekt.firebaseapp.com">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Project ID</label>
-              <input type="text" id="fb-projectId" placeholder="meinprojekt-12345">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Storage Bucket</label>
-              <input type="text" id="fb-storageBucket" placeholder="meinprojekt-12345.firebasestorage.app">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Messaging Sender ID</label>
-              <input type="text" id="fb-messagingSenderId" placeholder="123456789">
-            </div>
-            <div class="form-group">
-              <label>App ID</label>
-              <input type="text" id="fb-appId" placeholder="1:123:web:abc123">
-            </div>
-          </div>
-          <div style="display:flex;gap:8px;margin-bottom:16px;">
-            <button type="button" class="btn btn-small btn-primary" onclick="connectFirebase()">Verbinden</button>
-            <button type="button" class="btn btn-small btn-danger" onclick="disconnectFirebase()">Trennen</button>
-          </div>
+          <p style="color:var(--text-secondary);font-size:12px;margin-bottom:16px;">Deine Daten werden automatisch in der Cloud synchronisiert. Server: EU (Frankfurt).</p>
 
           <h3>Datenspeicherung</h3>
           <div class="form-row">
@@ -1439,8 +1298,24 @@
           <button type="button" class="btn btn-small" onclick="addSavedItem()" style="margin-top:8px;">+ Neue Position speichern</button>
 
           <h3>Konto</h3>
-          <div class="form-group">
-            <button type="button" class="btn btn-danger" onclick="authLogout()">Abmelden</button>
+          <p style="color:var(--text-secondary);font-size:13px;margin-bottom:8px;" id="settings-user-email"></p>
+          <div style="display:flex;gap:8px;margin-bottom:16px;">
+            <button type="button" class="btn" onclick="authLogout()">Abmelden</button>
+            <button type="button" class="btn btn-ghost" onclick="showSettingsPrivacy()">Datenschutzerklärung</button>
+          </div>
+
+          <div id="settings-privacy-section" style="display:none;margin-bottom:16px;">
+            <div style="max-height:300px;overflow-y:auto;font-size:12px;color:var(--text-secondary);line-height:1.7;padding:16px;background:var(--bg-tertiary);border-radius:var(--radius);">
+              <p style="font-weight:700;color:var(--text-primary);margin-bottom:8px;">Datenschutzerklärung für Zakflow</p>
+              <p><strong>1. Verantwortlicher:</strong> Der Betreiber der Zakflow-App.</p>
+              <p><strong>2. Daten:</strong> E-Mail (Registrierung), sowie alle von dir eingegebenen Geschäftsdaten (Rechnungen, Kunden, Ausgaben, Spenden, Kontakte, Dokumente, Kalender).</p>
+              <p><strong>3. Zweck:</strong> Ausschließlich zur Bereitstellung der App-Funktionen.</p>
+              <p><strong>4. Speicherung:</strong> Google Firebase (EU/Frankfurt), verschlüsselt (SSL/TLS). Zusätzlich lokal auf deinem Gerät.</p>
+              <p><strong>5. Keine Weitergabe:</strong> Daten werden nicht verkauft oder an Dritte weitergegeben.</p>
+              <p><strong>6. Deine Rechte (DSGVO):</strong> Auskunft, Berichtigung, Löschung, Datenübertragbarkeit, Widerspruch.</p>
+              <p><strong>7. Keine Cookies/Tracking:</strong> Zakflow verwendet kein Tracking und keine Analyse-Tools.</p>
+              <p><strong>8. Kontakt:</strong> Bei Fragen zum Datenschutz wende dich an den App-Betreiber.</p>
+            </div>
           </div>
 
           <div class="form-actions">

@@ -39,28 +39,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   darkMode = await window.api.getDarkMode();
   applyDarkMode();
 
-  // Firebase Config laden und verbinden
-  const fbConfig = await window.api.getFirebaseConfig();
-  if (fbConfig) {
-    const ok = await initFirebase(fbConfig);
-    if (ok) store.useFirebase = true;
-  }
+  // Firebase automatisch verbinden (Config ist fest eingebaut)
+  const ok = await initFirebase(FIREBASE_CONFIG);
+  if (ok) store.useFirebase = true;
 
-  // Auth-Flow:
-  // 1. Keine Firebase Config → Setup-Wizard
-  // 2. Firebase Config aber nicht eingeloggt → Login-Screen
-  // 3. Eingeloggt → App
-  if (!fbConfig) {
-    document.getElementById('auth-overlay').style.display = 'flex';
-    showSetupWizard();
-    return;
-  }
-
-  // Firebase Auth State prüfen
+  // Auth-Flow: Nicht eingeloggt → Login/Register, eingeloggt → App
   if (typeof auth !== 'undefined' && auth) {
     auth.onAuthStateChanged(async (user) => {
       if (user) {
-        // Eingeloggt
         try {
           document.getElementById('auth-overlay').style.display = 'none';
           await initApp();
@@ -69,15 +55,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           showToast('Fehler beim Laden: ' + err.message, 'error');
         }
       } else {
-        // Nicht eingeloggt → Login zeigen
         document.getElementById('auth-overlay').style.display = 'flex';
         showAuthLogin();
       }
     });
   } else {
-    // Firebase nicht initialisiert
     document.getElementById('auth-overlay').style.display = 'flex';
-    showSetupWizard();
+    showAuthLogin();
   }
   return;
 });
@@ -1079,6 +1063,18 @@ async function renderSettingsForm() {
   const s = store.settings;
   if (!s) return;
 
+  // User-E-Mail anzeigen
+  const userEmailEl = document.getElementById('settings-user-email');
+  if (userEmailEl && auth && auth.currentUser) {
+    userEmailEl.textContent = `Angemeldet als: ${auth.currentUser.email}`;
+  }
+
+  // Firebase-Status
+  const fbStatus = document.getElementById('firebase-status');
+  if (fbStatus) {
+    fbStatus.innerHTML = `<span style="color:var(--success);font-weight:600;">● Verbunden</span>`;
+  }
+
   document.getElementById('settings-company-name').value = s.company.name || '';
   document.getElementById('settings-address').value = s.company.address || '';
   document.getElementById('settings-zip').value = s.company.zip || '';
@@ -1233,177 +1229,36 @@ async function saveSettingsForm() {
 }
 
 // ==========================
-// SETUP WIZARD
-// ==========================
-let wizardCurrentStep = 1;
-const WIZARD_TOTAL_STEPS = 6;
-
-function showSetupWizard() {
-  document.getElementById('setup-wizard').style.display = 'block';
-  document.getElementById('auth-login-form').style.display = 'none';
-  document.getElementById('auth-register-form').style.display = 'none';
-  wizardCurrentStep = 1;
-  updateWizardUI();
-}
-
-function updateWizardUI() {
-  // Steps anzeigen/verstecken
-  document.querySelectorAll('.wizard-step').forEach(s => {
-    s.classList.toggle('active', parseInt(s.dataset.step) === wizardCurrentStep);
-  });
-  // Progress-Indikatoren
-  document.querySelectorAll('.wizard-step-indicator').forEach(ind => {
-    const step = parseInt(ind.dataset.step);
-    ind.classList.remove('active', 'completed');
-    if (step < wizardCurrentStep) ind.classList.add('completed');
-    else if (step === wizardCurrentStep) ind.classList.add('active');
-  });
-}
-
-function wizardNext() {
-  if (wizardCurrentStep < WIZARD_TOTAL_STEPS) {
-    wizardCurrentStep++;
-    updateWizardUI();
-  }
-}
-
-function wizardBack() {
-  if (wizardCurrentStep > 1) {
-    wizardCurrentStep--;
-    updateWizardUI();
-  }
-}
-
-async function wizardFinish() {
-  const errorEl = document.getElementById('wiz-error');
-  const btn = document.querySelector('.wizard-step.active .btn-primary') ||
-              document.querySelector('.wizard-step[data-step="6"] .btn-primary');
-  errorEl.textContent = '';
-
-  let config = null;
-
-  // 1. Versuche aus dem Paste-Feld zu parsen
-  const pasteField = document.getElementById('wiz-fb-paste');
-  if (pasteField && pasteField.value.trim()) {
-    config = parseFirebaseConfigBlock(pasteField.value.trim());
-    if (!config) {
-      showAuthError(errorEl, 'Konnte die Config nicht lesen. Bitte den ganzen firebaseConfig-Block kopieren (mit den geschweiften Klammern).');
-      return;
-    }
-  }
-
-  // 2. Fallback: Einzelfelder
-  if (!config) {
-    config = {
-      apiKey: document.getElementById('wiz-fb-apiKey').value.trim(),
-      authDomain: document.getElementById('wiz-fb-authDomain').value.trim(),
-      projectId: document.getElementById('wiz-fb-projectId').value.trim(),
-      storageBucket: document.getElementById('wiz-fb-storageBucket').value.trim(),
-      messagingSenderId: document.getElementById('wiz-fb-messagingSenderId').value.trim(),
-      appId: document.getElementById('wiz-fb-appId').value.trim(),
-    };
-  }
-
-  if (!config.apiKey || !config.projectId) {
-    showAuthError(errorEl, 'Bitte die Firebase Config einfügen (API Key und Project ID werden benötigt)');
-    return;
-  }
-
-  // authDomain automatisch ableiten falls leer
-  if (!config.authDomain && config.projectId) {
-    config.authDomain = config.projectId + '.firebaseapp.com';
-  }
-
-  // Loading
-  if (btn) { btn.disabled = true; btn.textContent = 'Verbinde...'; }
-
-  try {
-    const success = await initFirebase(config);
-    if (!success) {
-      showAuthError(errorEl, 'Firebase Verbindung fehlgeschlagen – bitte Daten prüfen');
-      return;
-    }
-
-    await window.api.saveFirebaseConfig(config);
-    store.useFirebase = true;
-
-    // Auth-Listener registrieren (wurde beim Wizard-Flow nicht gesetzt)
-    auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        try {
-          document.getElementById('auth-overlay').style.display = 'none';
-          await initApp();
-        } catch (err) {
-          console.error('initApp Fehler:', err);
-          showToast('Fehler beim Laden: ' + err.message, 'error');
-        }
-      } else {
-        document.getElementById('auth-overlay').style.display = 'flex';
-        showAuthLogin();
-      }
-    });
-
-    // Wizard ausblenden, Register zeigen
-    document.getElementById('setup-wizard').style.display = 'none';
-    showAuthRegister();
-    showToast('Firebase verbunden! Erstelle jetzt dein Konto.', 'success');
-  } catch (err) {
-    console.error('wizardFinish Fehler:', err);
-    showAuthError(errorEl, 'Fehler: ' + (err.message || 'Unbekannter Fehler'));
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Verbinden & weiter →'; }
-  }
-}
-
-// Firebase Config aus kopiertem JS-Block parsen
-function parseFirebaseConfigBlock(text) {
-  try {
-    // Versuche JSON-artige Werte rauszulesen
-    const extract = (key) => {
-      const patterns = [
-        new RegExp(`["']?${key}["']?\\s*[:=]\\s*["']([^"']+)["']`),
-        new RegExp(`${key}\\s*[:=]\\s*["']([^"']+)["']`),
-      ];
-      for (const p of patterns) {
-        const m = text.match(p);
-        if (m) return m[1];
-      }
-      return '';
-    };
-
-    const config = {
-      apiKey: extract('apiKey'),
-      authDomain: extract('authDomain'),
-      projectId: extract('projectId'),
-      storageBucket: extract('storageBucket'),
-      messagingSenderId: extract('messagingSenderId'),
-      appId: extract('appId'),
-    };
-
-    if (config.apiKey && config.projectId) return config;
-    return null;
-  } catch (e) {
-    return null;
-  }
-}
-
-// ==========================
 // AUTH (Firebase Auth)
 // ==========================
 function showAuthLogin() {
-  document.getElementById('setup-wizard').style.display = 'none';
   document.getElementById('auth-login-form').style.display = 'block';
   document.getElementById('auth-register-form').style.display = 'none';
+  const priv = document.getElementById('auth-privacy');
+  if (priv) priv.style.display = 'none';
   document.getElementById('auth-error').textContent = '';
   setTimeout(() => document.getElementById('auth-email').focus(), 50);
 }
 
 function showAuthRegister() {
-  document.getElementById('setup-wizard').style.display = 'none';
   document.getElementById('auth-login-form').style.display = 'none';
   document.getElementById('auth-register-form').style.display = 'block';
+  const priv = document.getElementById('auth-privacy');
+  if (priv) priv.style.display = 'none';
   document.getElementById('auth-reg-error').textContent = '';
   setTimeout(() => document.getElementById('auth-reg-email').focus(), 50);
+}
+
+function showPrivacyPolicy(e) {
+  if (e) e.preventDefault();
+  document.getElementById('auth-login-form').style.display = 'none';
+  document.getElementById('auth-register-form').style.display = 'none';
+  document.getElementById('auth-privacy').style.display = 'block';
+}
+
+function showSettingsPrivacy() {
+  const el = document.getElementById('settings-privacy-section');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 function firebaseAuthErrorMessage(err) {
@@ -1478,6 +1333,21 @@ async function authRegister() {
   const errorEl = document.getElementById('auth-reg-error');
   const btn = document.querySelector('#auth-register-form .auth-btn');
 
+  // Einladungscode prüfen (optional)
+  const inviteCode = document.getElementById('invite-paste').value.trim();
+  if (inviteCode) {
+    try {
+      const inviteData = JSON.parse(decodeURIComponent(escape(atob(inviteCode))));
+      if (inviteData.o) {
+        window._pendingInviteOrgId = inviteData.o;
+        window._pendingInviteOrgName = inviteData.n || 'Verein';
+      }
+    } catch (e) {
+      showAuthError(document.getElementById('invite-error'), 'Ungültiger Einladungscode');
+      return;
+    }
+  }
+
   errorEl.textContent = '';
 
   if (!email || !password) {
@@ -1494,7 +1364,7 @@ async function authRegister() {
   }
 
   if (typeof auth === 'undefined' || !auth) {
-    showAuthError(errorEl, 'Firebase nicht verbunden – bitte Setup durchführen');
+    showAuthError(errorEl, 'Verbindung fehlgeschlagen – bitte App neu starten');
     return;
   }
 
@@ -1738,75 +1608,7 @@ function parseFirebaseConfig(input) {
   return null;
 }
 
-async function connectFirebase() {
-  const config = {
-    apiKey: document.getElementById('fb-apiKey').value.trim(),
-    authDomain: document.getElementById('fb-authDomain').value.trim(),
-    projectId: document.getElementById('fb-projectId').value.trim(),
-    storageBucket: document.getElementById('fb-storageBucket').value.trim(),
-    messagingSenderId: document.getElementById('fb-messagingSenderId').value.trim(),
-    appId: document.getElementById('fb-appId').value.trim(),
-  };
-
-  if (!config.apiKey || !config.projectId) {
-    showToast('Bitte mindestens API Key und Project ID eingeben', 'error');
-    return;
-  }
-
-  const success = await initFirebase(config);
-  if (success) {
-    await window.api.saveFirebaseConfig(config);
-    store.useFirebase = true;
-
-    // Lokale Daten nach Firebase hochladen
-    await syncToFirebase();
-
-    // Echtzeit-Sync starten
-    store.onDataChanged = (type) => {
-      if (type === 'customers') { renderCustomersList(); updateInvoiceForm(); }
-      if (type === 'invoices') { renderDashboard(); }
-      if (type === 'settings') { renderSettingsForm(); updateInvoiceForm(); }
-    };
-    store.startRealtimeSync();
-
-    showToast('Firebase verbunden! Daten werden synchronisiert.', 'success');
-  } else {
-    showToast('Firebase Verbindung fehlgeschlagen', 'error');
-  }
-
-  renderFirebaseStatus();
-}
-
-async function disconnectFirebase() {
-  store.stopRealtimeSync();
-  store.useFirebase = false;
-  firebaseReady = false;
-  db = null;
-
-  if (window.api) await window.api.removeFirebaseConfig();
-
-  showToast('Firebase getrennt', 'success');
-  renderFirebaseStatus();
-}
-
-function renderFirebaseStatus() {
-  const el = document.getElementById('firebase-status');
-  if (!el) return;
-
-  if (firebaseReady && db) {
-    const opts = firebase.app().options;
-    el.innerHTML = `<span style="color:var(--success);font-weight:600;">✅ Verbunden</span> <span style="color:var(--text-secondary);font-size:12px;">— Projekt: ${opts.projectId || 'Unbekannt'}</span>`;
-    // Felder vorausfüllen
-    document.getElementById('fb-apiKey').value = opts.apiKey || '';
-    document.getElementById('fb-authDomain').value = opts.authDomain || '';
-    document.getElementById('fb-projectId').value = opts.projectId || '';
-    document.getElementById('fb-storageBucket').value = opts.storageBucket || '';
-    document.getElementById('fb-messagingSenderId').value = opts.messagingSenderId || '';
-    document.getElementById('fb-appId').value = opts.appId || '';
-  } else {
-    el.innerHTML = '<span style="color:var(--text-secondary);">❌ Nicht verbunden — Daten nur lokal gespeichert</span>';
-  }
-}
+// Firebase ist jetzt fest eingebaut — connectFirebase/disconnectFirebase nicht mehr nötig
 
 // ==========================
 // PDF IMPORT
@@ -3184,17 +2986,9 @@ function showTeamLink(teamId) {
   const team = teams.find(t => t.id === teamId);
   if (!team) return;
 
-  const config = firebase.app().options;
   const baseUrl = 'https://malikk065.github.io/Zakflow/docs/team.html';
-
-  // Komprimierter Link: alle Daten in einem Parameter
-  const linkData = {
-    c: compressFirebaseConfig(config),
-    t: teamId,
-    o: store.currentOrgId || '',
-  };
-  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(linkData))));
-  const url = `${baseUrl}?l=${encoded}`;
+  const orgParam = store.currentOrgId ? `&o=${store.currentOrgId}` : '';
+  const url = `${baseUrl}?t=${teamId}${orgParam}`;
 
   document.getElementById('team-link-url').value = url;
   document.getElementById('team-link-modal').classList.add('active');
@@ -3890,45 +3684,14 @@ async function removeOrgMember(email, orgId) {
 }
 
 // --- Einladungssystem ---
-
-// Komprimiert Firebase Config (entfernt ableitbare Felder)
-function compressFirebaseConfig(config) {
-  return {
-    a: config.apiKey,
-    p: config.projectId,
-    m: config.messagingSenderId,
-    i: config.appId,
-    // authDomain + storageBucket werden aus projectId abgeleitet
-  };
-}
-
-// Dekomprimiert Firebase Config
-function decompressFirebaseConfig(c) {
-  // Unterstützt sowohl altes (volles) als auch neues (komprimiertes) Format
-  if (c.apiKey) return c; // Altes Format
-  return {
-    apiKey: c.a,
-    authDomain: c.p + '.firebaseapp.com',
-    projectId: c.p,
-    storageBucket: c.p + '.firebasestorage.app',
-    messagingSenderId: c.m,
-    appId: c.i,
-  };
-}
-
 function showInviteCode(orgId) {
   if (store.userRole !== 'admin') { showToast('Nur Admins können einladen', 'error'); return; }
 
   const org = store.allOrgs.find(o => o.id === orgId);
   if (!org) return;
 
-  // Komprimierter Einladungscode
-  const config = firebase.app().options;
-  const inviteData = {
-    c: compressFirebaseConfig(config),
-    o: orgId,
-    n: org.name,
-  };
+  // Einladungscode: nur Org-ID + Name (Firebase Config ist fest eingebaut)
+  const inviteData = { o: orgId, n: org.name };
   const code = btoa(unescape(encodeURIComponent(JSON.stringify(inviteData))));
 
   document.getElementById('invite-code').value = code;
@@ -3950,79 +3713,7 @@ function copyInviteCode() {
   });
 }
 
-async function joinWithInvite() {
-  const errorEl = document.getElementById('invite-error');
-  const code = document.getElementById('invite-paste').value.trim();
-  errorEl.textContent = '';
-
-  if (!code) {
-    showAuthError(errorEl, 'Bitte den Einladungscode einfügen');
-    return;
-  }
-
-  // Code dekodieren
-  let inviteData;
-  try {
-    inviteData = JSON.parse(decodeURIComponent(escape(atob(code))));
-  } catch (e) {
-    showAuthError(errorEl, 'Ungültiger Einladungscode – bitte nochmal kopieren');
-    return;
-  }
-
-  if (!inviteData.c || (!inviteData.c.apiKey && !inviteData.c.a)) {
-    showAuthError(errorEl, 'Ungültiger Einladungscode – Daten fehlen');
-    return;
-  }
-
-  // Config dekomprimieren (unterstützt altes + neues Format)
-  const firebaseConfig = decompressFirebaseConfig(inviteData.c);
-
-  // Firebase verbinden
-  const btn = document.querySelector('#invite-paste + .auth-error + .btn-primary') ||
-              document.querySelector('.wizard-step.active .btn-primary');
-  if (btn) { btn.disabled = true; btn.textContent = 'Verbinde...'; }
-
-  try {
-    const success = await initFirebase(firebaseConfig);
-    if (!success) {
-      showAuthError(errorEl, 'Firebase Verbindung fehlgeschlagen');
-      return;
-    }
-
-    // Config speichern
-    await window.api.saveFirebaseConfig(firebaseConfig);
-    store.useFirebase = true;
-
-    // Auth-Listener registrieren (wurde beim Wizard-Flow nicht gesetzt)
-    auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        try {
-          document.getElementById('auth-overlay').style.display = 'none';
-          await initApp();
-        } catch (err) {
-          console.error('initApp Fehler:', err);
-          showToast('Fehler beim Laden: ' + err.message, 'error');
-        }
-      } else {
-        document.getElementById('auth-overlay').style.display = 'flex';
-        showAuthLogin();
-      }
-    });
-
-    // Org-ID merken für nach der Registrierung
-    window._pendingInviteOrgId = inviteData.o;
-    window._pendingInviteOrgName = inviteData.n;
-
-    // Wizard ausblenden, Register zeigen
-    document.getElementById('setup-wizard').style.display = 'none';
-    showAuthRegister();
-    showToast(`Einladung für "${inviteData.n || 'Verein'}" angenommen! Erstelle jetzt dein Konto.`, 'success');
-  } catch (err) {
-    showAuthError(errorEl, 'Fehler: ' + (err.message || 'Unbekannter Fehler'));
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Beitreten →'; }
-  }
-}
+// joinWithInvite wird nicht mehr benötigt — Einladungscode wird direkt bei der Registrierung verarbeitet
 
 // --- Helpers ---
 function escapeHtml(str) {

@@ -1,4 +1,13 @@
-// Firebase Konfiguration - wird vom Benutzer selbst eingetragen
+// Firebase Konfiguration — fest eingebaut
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDDzRp_FTJby4g2luW27EwTP10nEh6OjOU",
+  authDomain: "zakflow-aeab5.firebaseapp.com",
+  projectId: "zakflow-aeab5",
+  storageBucket: "zakflow-aeab5.firebasestorage.app",
+  messagingSenderId: "248085816349",
+  appId: "1:248085816349:web:4d0826289f210b186d12f4"
+};
+
 let db = null;
 let auth = null;
 let firebaseReady = false;
@@ -11,7 +20,7 @@ async function initFirebase(config) {
         await app.delete();
       }
     }
-    firebase.initializeApp(config);
+    firebase.initializeApp(config || FIREBASE_CONFIG);
     db = firebase.firestore();
     auth = firebase.auth();
 
@@ -29,7 +38,7 @@ async function initFirebase(config) {
     }
 
     firebaseReady = true;
-    console.log('Firebase verbunden:', config.projectId);
+    console.log('Firebase verbunden:', (config || FIREBASE_CONFIG).projectId);
     return true;
   } catch (e) {
     console.error('Firebase Init Fehler:', e);
@@ -38,24 +47,4 @@ async function initFirebase(config) {
     auth = null;
     return false;
   }
-}
-
-function getFirebaseConfig() {
-  // Electron: aus lokaler Datei laden
-  if (typeof window.api !== 'undefined') {
-    return null; // Wird über IPC geladen
-  }
-  // PWA: aus localStorage laden
-  const saved = localStorage.getItem('firebaseConfig');
-  if (saved) {
-    try {
-      return JSON.parse(saved);
-    } catch (e) { return null; }
-  }
-  return null;
-}
-
-function saveFirebaseConfigLocal(config) {
-  // PWA: in localStorage speichern
-  localStorage.setItem('firebaseConfig', JSON.stringify(config));
 }
