@@ -982,3 +982,217 @@ async function generateDonationReceiptPDF({ donations, settings, logoData, signa
 
   return await doc.save();
 }
+
+// ==========================
+// BRIEFPAPIER / LETTERHEAD
+// ==========================
+async function generateLetterPDF({ settings, logoData, signatureData, recipient, subject, date, body }) {
+  const { PDFDocument, rgb, StandardFonts } = PDFLib;
+
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595.28, 841.89]); // A4
+  const { width, height } = page.getSize();
+
+  const fontRegular = await doc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+
+  const black = rgb(0.1, 0.1, 0.12);
+  const gray = rgb(0.4, 0.4, 0.45);
+  const lightGray = rgb(0.85, 0.85, 0.88);
+  const accent = rgb(0, 0.44, 0.89);
+
+  const marginLeft = 50;
+  const marginRight = 50;
+  const contentWidth = width - marginLeft - marginRight;
+
+  let y = height - 50;
+
+  // =====================
+  // HEADER — Logo + Firmendaten
+  // =====================
+  const headerTop = y;
+
+  // Logo (links)
+  if (logoData && logoData.data) {
+    try {
+      let logoImage;
+      if (logoData.mimeType.includes('png')) {
+        logoImage = await doc.embedPng(Uint8Array.from(atob(logoData.data), c => c.charCodeAt(0)));
+      } else if (logoData.mimeType.includes('jpeg') || logoData.mimeType.includes('jpg')) {
+        logoImage = await doc.embedJpg(Uint8Array.from(atob(logoData.data), c => c.charCodeAt(0)));
+      }
+      if (logoImage) {
+        const logoDims = logoImage.scale(1);
+        const maxH = 60, maxW = 150;
+        const scale = Math.min(maxW / logoDims.width, maxH / logoDims.height, 1);
+        const w = logoDims.width * scale;
+        const h = logoDims.height * scale;
+        page.drawImage(logoImage, { x: marginLeft, y: headerTop - h, width: w, height: h });
+      }
+    } catch (e) { console.error('Logo-Embed-Fehler:', e); }
+  }
+
+  // Firmendaten (rechts oben)
+  const companyX = width - marginRight;
+  const companyLines = [
+    { text: settings.company.name || '', font: fontBold, size: 12 },
+    { text: settings.company.address || '', font: fontRegular, size: 9 },
+    { text: `${settings.company.zip || ''} ${settings.company.city || ''}`.trim(), font: fontRegular, size: 9 },
+    { text: settings.company.phone ? `Tel: ${settings.company.phone}` : '', font: fontRegular, size: 9 },
+    { text: settings.company.email || '', font: fontRegular, size: 9 },
+    { text: settings.company.website || '', font: fontRegular, size: 9 },
+  ].filter(l => l.text);
+
+  let companyY = headerTop;
+  for (const line of companyLines) {
+    const tw = line.font.widthOfTextAtSize(line.text, line.size);
+    page.drawText(line.text, {
+      x: companyX - tw,
+      y: companyY - line.size,
+      size: line.size,
+      font: line.font,
+      color: line === companyLines[0] ? black : gray,
+    });
+    companyY -= line.size + 4;
+  }
+
+  y = Math.min(companyY, headerTop - 70) - 20;
+
+  // =====================
+  // Absenderzeile (klein, unterstrichen)
+  // =====================
+  const senderLine = [
+    settings.company.name,
+    settings.company.address,
+    `${settings.company.zip || ''} ${settings.company.city || ''}`.trim()
+  ].filter(Boolean).join(' · ');
+
+  page.drawText(senderLine, { x: marginLeft, y, size: 7, font: fontRegular, color: gray });
+  y -= 3;
+  page.drawLine({ start: { x: marginLeft, y }, end: { x: marginLeft + 250, y }, thickness: 0.5, color: lightGray });
+  y -= 18;
+
+  // =====================
+  // EMPFÄNGER
+  // =====================
+  if (recipient) {
+    const recipientLines = recipient.split('\n').filter(l => l.trim());
+    for (const line of recipientLines) {
+      page.drawText(line.trim(), { x: marginLeft, y, size: 10, font: fontRegular, color: black });
+      y -= 14;
+    }
+  }
+
+  y -= 20;
+
+  // =====================
+  // DATUM (rechts)
+  // =====================
+  if (date) {
+    const dateText = date;
+    const dateWidth = fontRegular.widthOfTextAtSize(dateText, 10);
+    page.drawText(dateText, { x: width - marginRight - dateWidth, y, size: 10, font: fontRegular, color: gray });
+    y -= 30;
+  }
+
+  // =====================
+  // BETREFF
+  // =====================
+  if (subject) {
+    page.drawText(subject, { x: marginLeft, y, size: 12, font: fontBold, color: black });
+    y -= 28;
+  }
+
+  // =====================
+  // TEXTKÖRPER
+  // =====================
+  if (body) {
+    const lines = body.split('\n');
+    const fontSize = 10;
+    const lineHeight = 16;
+    const maxWidth = contentWidth;
+
+    for (const rawLine of lines) {
+      if (rawLine.trim() === '') {
+        y -= lineHeight;
+        if (y < 80) { /* Keine neue Seite für Briefpapier */ break; }
+        continue;
+      }
+
+      // Zeilenumbruch bei langen Zeilen
+      const words = rawLine.split(' ');
+      let currentLine = '';
+
+      for (const word of words) {
+        const testLine = currentLine ? currentLine + ' ' + word : word;
+        const testWidth = fontRegular.widthOfTextAtSize(testLine, fontSize);
+
+        if (testWidth > maxWidth && currentLine) {
+          page.drawText(currentLine, { x: marginLeft, y, size: fontSize, font: fontRegular, color: black });
+          y -= lineHeight;
+          currentLine = word;
+          if (y < 80) break;
+        } else {
+          currentLine = testLine;
+        }
+      }
+
+      if (currentLine && y >= 80) {
+        page.drawText(currentLine, { x: marginLeft, y, size: fontSize, font: fontRegular, color: black });
+        y -= lineHeight;
+      }
+
+      if (y < 80) break;
+    }
+  }
+
+  // =====================
+  // UNTERSCHRIFT
+  // =====================
+  if (signatureData && signatureData.data) {
+    y -= 10;
+    try {
+      let sigImage;
+      if (signatureData.mimeType.includes('png')) {
+        sigImage = await doc.embedPng(Uint8Array.from(atob(signatureData.data), c => c.charCodeAt(0)));
+      } else {
+        sigImage = await doc.embedJpg(Uint8Array.from(atob(signatureData.data), c => c.charCodeAt(0)));
+      }
+      if (sigImage) {
+        const dims = sigImage.scale(1);
+        const maxH = 40, maxW = 120;
+        const scale = Math.min(maxW / dims.width, maxH / dims.height, 1);
+        page.drawImage(sigImage, { x: marginLeft, y: y - dims.height * scale, width: dims.width * scale, height: dims.height * scale });
+        y -= dims.height * scale + 8;
+      }
+    } catch (e) { console.error('Signatur-Fehler:', e); }
+  }
+
+  // =====================
+  // FUSSZEILE
+  // =====================
+  const footerY = 30;
+  const footerParts = [
+    settings.company.name,
+    settings.company.iban ? `IBAN: ${settings.company.iban}` : '',
+    settings.company.bankName ? `Bank: ${settings.company.bankName}` : '',
+    settings.company.taxNumber ? `St.Nr.: ${settings.company.taxNumber}` : '',
+  ].filter(Boolean);
+
+  const footerText = footerParts.join('  ·  ');
+  const footerWidth = fontRegular.widthOfTextAtSize(footerText, 7);
+
+  page.drawLine({
+    start: { x: marginLeft, y: footerY + 12 },
+    end: { x: width - marginRight, y: footerY + 12 },
+    thickness: 0.5, color: lightGray,
+  });
+
+  page.drawText(footerText, {
+    x: (width - footerWidth) / 2,
+    y: footerY,
+    size: 7, font: fontRegular, color: gray,
+  });
+
+  return await doc.save();
+}

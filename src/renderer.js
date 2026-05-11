@@ -3715,6 +3715,70 @@ function copyInviteCode() {
 
 // joinWithInvite wird nicht mehr benötigt — Einladungscode wird direkt bei der Registrierung verarbeitet
 
+// ==========================
+// BRIEFPAPIER (Letterhead)
+// ==========================
+function showLetterModal() {
+  document.getElementById('letter-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('letter-recipient').value = '';
+  document.getElementById('letter-subject').value = '';
+  document.getElementById('letter-body').value = '';
+  document.getElementById('letter-modal').classList.add('active');
+}
+
+function closeLetterModal() {
+  document.getElementById('letter-modal').classList.remove('active');
+}
+
+async function generateLetter(e) {
+  e.preventDefault();
+
+  const recipient = document.getElementById('letter-recipient').value.trim();
+  const subject = document.getElementById('letter-subject').value.trim();
+  const dateRaw = document.getElementById('letter-date').value;
+  const body = document.getElementById('letter-body').value;
+
+  if (!subject && !body) {
+    showToast('Bitte mindestens Betreff oder Text eingeben', 'error');
+    return;
+  }
+
+  const settings = store.settings || {};
+
+  // Datum formatieren
+  const date = dateRaw ? new Date(dateRaw).toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' }) : '';
+
+  // Logo + Unterschrift laden
+  let logoData = null;
+  const logoPath = await window.api.getLogo();
+  if (logoPath) logoData = await window.api.readLogoBase64(logoPath);
+
+  let signatureData = null;
+  const sigPath = await window.api.getSignature();
+  if (sigPath) signatureData = await window.api.readSignatureBase64(sigPath);
+
+  try {
+    const pdfBytes = await generateLetterPDF({
+      settings,
+      logoData,
+      signatureData,
+      recipient,
+      subject,
+      date,
+      body,
+    });
+
+    const fileName = subject ? `Brief_${subject.replace(/[^a-zA-Z0-9äöüÄÖÜß_-]/g, '_').substring(0, 40)}` : 'Briefpapier';
+    await window.api.saveAutoPDF(pdfBytes, fileName);
+    showPdfPreview(pdfBytes, `Brief — ${subject || 'Briefpapier'}`, fileName);
+    showToast('Brief als PDF erstellt', 'success');
+    closeLetterModal();
+  } catch (err) {
+    console.error('Brief PDF Fehler:', err);
+    showToast('Fehler: ' + err.message, 'error');
+  }
+}
+
 // --- Helpers ---
 function escapeHtml(str) {
   if (!str) return '';
