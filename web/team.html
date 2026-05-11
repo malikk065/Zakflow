@@ -186,12 +186,24 @@
   <script>
     let db = null;
     let teamId = null;
+    let orgId = null;
     let teamData = null;
 
     // URL-Parameter lesen
     const params = new URLSearchParams(window.location.search);
     const encodedConfig = params.get('c');
     teamId = params.get('t');
+    orgId = params.get('o');
+
+    // Org-scoped Collection Helper
+    function col(name) {
+      if (orgId) return db.collection('orgs').doc(orgId).collection(name);
+      return db.collection(name);
+    }
+    function settingsDoc() {
+      if (orgId) return db.collection('orgs').doc(orgId).collection('meta').doc('settings');
+      return db.collection('app').doc('settings');
+    }
 
     const DEFAULT_CATEGORIES = {
       material: { label: 'Material & Waren', icon: '📦' },
@@ -209,9 +221,9 @@
     async function loadCategories() {
       let categories = DEFAULT_CATEGORIES;
       try {
-        const settingsDoc = await db.collection('app').doc('settings').get();
-        if (settingsDoc.exists && settingsDoc.data().expenseCategories) {
-          categories = settingsDoc.data().expenseCategories;
+        const sDoc = await settingsDoc().get();
+        if (sDoc.exists && sDoc.data().expenseCategories) {
+          categories = sDoc.data().expenseCategories;
         }
       } catch (e) { /* use defaults */ }
 
@@ -234,7 +246,7 @@
         db = firebase.firestore();
 
         // Team-Dokument laden
-        const teamDoc = await db.collection('teams').doc(teamId).get();
+        const teamDoc = await col('teams').doc(teamId).get();
         if (!teamDoc.exists) {
           showState('invalid');
           return;
@@ -318,7 +330,7 @@
         };
 
         // In expenses-Collection speichern (gleiche wie Haupt-App)
-        await db.collection('expenses').doc(expense.id).set(expense);
+        await col('expenses').doc(expense.id).set(expense);
 
         showState('success');
         loadHistory();
@@ -336,7 +348,7 @@
         const name = document.getElementById('inp-name').value.trim() || localStorage.getItem('team_user_name');
         if (!name) return;
 
-        const snapshot = await db.collection('expenses')
+        const snapshot = await col('expenses')
           .where('teamId', '==', teamId)
           .where('submittedBy', '==', name)
           .orderBy('createdAt', 'desc')
