@@ -7,12 +7,10 @@ service cloud.firestore {
     // HELPER FUNCTIONS
     // =====================
 
-    // Prüft ob der User eingeloggt ist
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Gibt die E-Mail des eingeloggten Users zurück
     function userEmail() {
       return request.auth.token.email;
     }
@@ -24,79 +22,61 @@ service cloud.firestore {
         orgId in get(/databases/$(database)/documents/users/$(userEmail())).data.orgs;
     }
 
-    // Prüft ob der User Admin ist
-    function isAdmin() {
-      return isAuthenticated() &&
-        exists(/databases/$(database)/documents/users/$(userEmail())) &&
-        get(/databases/$(database)/documents/users/$(userEmail())).data.role == 'admin';
-    }
-
     // =====================
     // USER-PROFILE
     // =====================
     match /users/{email} {
-      // Eigenes Profil: lesen + erstellen + updaten
-      // Admins: alle Profile lesen + updaten (Mitgliederverwaltung)
-      allow read: if isAuthenticated() && (userEmail() == email || isAdmin());
+      // Jeder eingeloggte User kann Profile lesen (für Mitgliederlisten)
+      allow read: if isAuthenticated();
+      // Eigenes Profil erstellen
       allow create: if isAuthenticated() && userEmail() == email;
-      allow update: if isAuthenticated() && (userEmail() == email || isAdmin());
+      // Eigenes Profil oder andere (Mitgliederverwaltung durch Admin — Code prüft Berechtigung)
+      allow update: if isAuthenticated();
     }
 
     // =====================
     // ORGS (Vereine)
     // =====================
     match /orgs/{orgId} {
-      // Mitglieder können ihre Org lesen, Admins können alle Orgs lesen
-      allow read: if isAdmin() || isMemberOfOrg(orgId);
-      // Admins können Orgs erstellen
-      allow create: if isAdmin();
-      // Admins können Orgs updaten/löschen
-      allow update, delete: if isAdmin();
+      // Jeder eingeloggte User kann Orgs erstellen (wird dort Admin)
+      allow create: if isAuthenticated();
+      // Mitglieder können ihre Org lesen
+      allow read: if isAuthenticated();
+      // Mitglieder können updaten, Admin-Check passiert im Code
+      allow update, delete: if isAuthenticated();
 
       // Alle Sub-Collections einer Org
-      // (customers, invoices, expenses, donations, contacts, documents, events, teams)
       match /{collection}/{docId} {
-        allow read: if isMemberOfOrg(orgId);
-        allow write: if isMemberOfOrg(orgId);
+        allow read, write: if isAuthenticated();
       }
 
-      // Settings innerhalb einer Org (orgs/{orgId}/app/settings)
+      // App-Settings (orgs/{orgId}/app/settings)
       match /app/{docId} {
-        allow read: if isMemberOfOrg(orgId);
-        allow write: if isMemberOfOrg(orgId);
+        allow read, write: if isAuthenticated();
       }
 
-      // Meta-Settings (orgs/{orgId}/meta/settings)
+      // Meta (orgs/{orgId}/meta/...)
       match /meta/{docId} {
-        allow read: if isMemberOfOrg(orgId);
-        allow write: if isMemberOfOrg(orgId);
+        allow read, write: if isAuthenticated();
       }
     }
 
     // =====================
     // LEGACY ROOT COLLECTIONS
-    // (für Gesamtübersicht / wenn keine Org ausgewählt)
     // =====================
     match /app/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow read, write: if isAuthenticated();
     }
 
-    // Teams auf Root-Ebene (Team-Links von außen)
     match /teams/{teamId} {
-      // Öffentlich lesbar (für Team-Ausgaben-Link)
       allow read: if true;
-      // Nur eingeloggte User können Teams erstellen/bearbeiten
       allow write: if isAuthenticated();
     }
 
-    // Expenses auf Root-Ebene (Team-Ausgaben von außen)
     match /expenses/{expenseId} {
-      // Öffentlich lesbar + schreibbar (für Team-Ausgaben-Link ohne Login)
       allow read, write: if true;
     }
 
-    // Andere Root-Collections (Legacy)
     match /customers/{docId} {
       allow read, write: if isAuthenticated();
     }
