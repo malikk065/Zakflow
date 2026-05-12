@@ -88,16 +88,17 @@ class Store {
     if (!this.useFirebase || !db) return;
     try {
       if (this.userOrgs.length > 0) {
-        // Nur Orgs laden zu denen der User gehört
-        // Firestore 'in' Query max 30 IDs
-        const chunks = [];
-        for (let i = 0; i < this.userOrgs.length; i += 30) {
-          chunks.push(this.userOrgs.slice(i, i + 30));
-        }
+        // Orgs einzeln laden (sicher, kein FieldPath nötig)
         this.allOrgs = [];
-        for (const chunk of chunks) {
-          const snapshot = await db.collection('orgs').where(firebase.firestore.FieldPath.documentId(), 'in', chunk).get();
-          this.allOrgs.push(...snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        for (const orgId of this.userOrgs) {
+          try {
+            const doc = await db.collection('orgs').doc(orgId).get();
+            if (doc.exists) {
+              this.allOrgs.push({ id: doc.id, ...doc.data() });
+            }
+          } catch (e) {
+            console.warn(`Org ${orgId} konnte nicht geladen werden:`, e);
+          }
         }
       } else {
         this.allOrgs = [];

@@ -118,18 +118,23 @@ async function initApp() {
 
     // Kein Verein zugewiesen → neuen erstellen (jeder neue User bekommt seinen eigenen)
     if (!store.currentOrgId && store.userOrgs.length === 0) {
-      const org = await store.createOrg('Mein Verein');
-      if (org) {
-        store.currentOrgId = org.id;
-        store.userOrgs = [org.id];
-        store.userRole = 'admin';
-        store.orgRoles[org.id] = 'admin';
-        await db.collection('users').doc(auth.currentUser.email).update({
-          orgs: [org.id],
-          orgRoles: store.orgRoles,
-          lastOrgId: org.id,
-        });
-        showToast('Verein "Mein Verein" wurde erstellt. Du kannst ihn unter Vereine umbenennen.', 'info', 5000);
+      try {
+        const org = await store.createOrg('Mein Verein');
+        if (org) {
+          store.currentOrgId = org.id;
+          store.userOrgs = [org.id];
+          store.userRole = 'admin';
+          store.orgRoles[org.id] = 'admin';
+          await db.collection('users').doc(auth.currentUser.email).update({
+            orgs: [org.id],
+            orgRoles: store.orgRoles,
+            lastOrgId: org.id,
+          });
+          showToast('Verein "Mein Verein" wurde erstellt. Du kannst ihn unter Vereine umbenennen.', 'info', 5000);
+        }
+      } catch (e) {
+        console.error('Auto-Verein erstellen fehlgeschlagen:', e);
+        showToast('Verein konnte nicht erstellt werden: ' + e.message, 'error');
       }
     }
   }
@@ -3676,22 +3681,27 @@ async function saveOrg() {
     return;
   }
 
-  const org = await store.createOrg(name);
-  if (org) {
-    // User als Admin zu dieser Org hinzufügen
-    store.userOrgs.push(org.id);
-    store.orgRoles[org.id] = 'admin';
-    await db.collection('users').doc(auth.currentUser.email).update({
-      orgs: store.userOrgs,
-      orgRoles: store.orgRoles,
-    });
-    closeOrgModal();
-    await store.loadAllOrgs();
-    renderOrgsList();
-    renderOrgSwitcher();
-    showToast(`Verein "${name}" erstellt`, 'success');
-  } else {
-    showToast('Fehler beim Erstellen', 'error');
+  try {
+    const org = await store.createOrg(name);
+    if (org) {
+      // User als Admin zu dieser Org hinzufügen
+      store.userOrgs.push(org.id);
+      store.orgRoles[org.id] = 'admin';
+      await db.collection('users').doc(auth.currentUser.email).update({
+        orgs: store.userOrgs,
+        orgRoles: store.orgRoles,
+      });
+      closeOrgModal();
+      await store.loadAllOrgs();
+      renderOrgsList();
+      renderOrgSwitcher();
+      showToast(`Verein "${name}" erstellt`, 'success');
+    } else {
+      showToast('Fehler beim Erstellen — keine Firebase-Verbindung?', 'error');
+    }
+  } catch (e) {
+    console.error('saveOrg Fehler:', e);
+    showToast('Fehler: ' + e.message, 'error');
   }
 }
 
