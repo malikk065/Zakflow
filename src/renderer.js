@@ -82,14 +82,16 @@ async function initApp() {
     // Einladung verarbeiten: Neuen User automatisch dem Verein zuweisen
     if (window._pendingInviteOrgId && !store.userOrgs.includes(window._pendingInviteOrgId)) {
       try {
-        if (typeof store.assignUserToOrg === 'function') {
-          await store.assignUserToOrg(auth.currentUser.email, window._pendingInviteOrgId);
-        }
-        store.userOrgs.push(window._pendingInviteOrgId);
-        store.currentOrgId = window._pendingInviteOrgId;
+        const inviteOrgId = window._pendingInviteOrgId;
+        await store.assignUserToOrg(auth.currentUser.email, inviteOrgId, 'member');
+        store.userOrgs.push(inviteOrgId);
+        store.orgRoles[inviteOrgId] = 'member';
+        store.currentOrgId = inviteOrgId;
+        store.userRole = 'member';
         await db.collection('users').doc(auth.currentUser.email).update({
           orgs: store.userOrgs,
-          lastOrgId: window._pendingInviteOrgId,
+          orgRoles: store.orgRoles,
+          lastOrgId: inviteOrgId,
         });
         showToast(`Du bist jetzt Mitglied von "${window._pendingInviteOrgName || 'Verein'}"`, 'success');
       } catch (e) {
@@ -101,40 +103,33 @@ async function initApp() {
 
     renderOrgSwitcher();
 
-    // Admin-Funktionen anzeigen/verstecken
-    if (store.userRole === 'admin') {
-      document.getElementById('nav-orgs').style.display = '';
-    } else {
-      document.getElementById('nav-orgs').style.display = 'none';
-    }
+    // Vereine-Tab anzeigen wenn User Admin in mindestens einem Verein ist
+    const isAnyAdmin = Object.values(store.orgRoles).includes('admin');
+    document.getElementById('nav-orgs').style.display = isAnyAdmin ? '' : 'none';
 
     // Org zuweisen
-    if (store.userRole === 'admin') {
-      // Admin: Wenn keine Org existiert → Hauptverein erstellen
-      if (!store.currentOrgId && store.allOrgs.length === 0) {
-        const org = await store.createOrg('Hauptverein');
-        if (org) {
-          store.currentOrgId = org.id;
-          store.userOrgs = [org.id];
-          await db.collection('users').doc(auth.currentUser.email).update({
-            orgs: [org.id],
-            lastOrgId: org.id,
-          });
-        }
-      } else if (!store.currentOrgId && store.allOrgs.length > 0) {
-        store.currentOrgId = store.allOrgs[0].id;
-      }
-    } else {
-      // Member: Nur auf zugewiesene Orgs zugreifen
-      if (!store.currentOrgId && store.userOrgs.length > 0) {
-        store.currentOrgId = store.userOrgs[0];
-      } else if (store.currentOrgId && !store.userOrgs.includes(store.currentOrgId)) {
-        // Gespeicherte Org ist nicht mehr zugewiesen → auf erste erlaubte wechseln
-        store.currentOrgId = store.userOrgs.length > 0 ? store.userOrgs[0] : null;
-      }
-      // Member ohne Org-Zuweisung → Hinweis zeigen
-      if (!store.currentOrgId) {
-        showToast('Du bist noch keinem Verein zugewiesen. Bitte kontaktiere den Admin.', 'error');
+    if (!store.currentOrgId && store.userOrgs.length > 0) {
+      // User hat Orgs → erste nehmen
+      store.currentOrgId = store.userOrgs[0];
+    } else if (store.currentOrgId && store.userOrgs.length > 0 && !store.userOrgs.includes(store.currentOrgId)) {
+      // Gespeicherte Org nicht mehr zugewiesen → auf erste erlaubte wechseln
+      store.currentOrgId = store.userOrgs[0];
+    }
+
+    // Kein Verein zugewiesen → neuen erstellen (jeder neue User bekommt seinen eigenen)
+    if (!store.currentOrgId && store.userOrgs.length === 0) {
+      const org = await store.createOrg('Mein Verein');
+      if (org) {
+        store.currentOrgId = org.id;
+        store.userOrgs = [org.id];
+        store.userRole = 'admin';
+        store.orgRoles[org.id] = 'admin';
+        await db.collection('users').doc(auth.currentUser.email).update({
+          orgs: [org.id],
+          orgRoles: store.orgRoles,
+          lastOrgId: org.id,
+        });
+        showToast('Verein "Mein Verein" wurde erstellt. Du kannst ihn unter Vereine umbenennen.', 'info', 5000);
       }
     }
   }
@@ -201,6 +196,81 @@ async function initApp() {
   updateInvoiceForm();
   updateNumberPreview();
   initFinanceYearSelect();
+
+  // Offline/Online-Status überwachen
+  setupOfflineIndicator();
+}
+
+// --- Offline-Modus ---
+let isOnline = navigator.onLine;
+
+function setupOfflineIndicator() {
+  // Status-Badge erstellen
+  const indicator = document.createElement('div');
+  indicator.id = 'connection-status';
+  indicator.className = isOnline ? 'connection-online' : 'connection-offline';
+  indicator.innerHTML = isOnline
+    ? '<span class="status-dot online"></span> Online'
+    : '<span class="status-dot offline"></span> Offline';
+  document.body.appendChild(indicator);
+
+  // Online/Offline Events
+  window.addEventListener('online', () => {
+    isOnline = true;
+    updateConnectionStatus();
+    showToast('Verbindung wiederhergestellt — Daten werden synchronisiert', 'success');
+    // Pending Änderungen synchronisieren
+    if (store.useFirebase && db) {
+      db.enableNetwork().then(() => {
+        console.log('Firestore Netzwerk aktiviert');
+      }).catch(e => console.warn('enableNetwork fehlgeschlagen:', e));
+    }
+  });
+
+  window.addEventListener('offline', () => {
+    isOnline = false;
+    updateConnectionStatus();
+    showToast('Keine Internetverbindung — Offline-Modus aktiv', 'warning', 5000);
+    // Firestore in Offline-Modus setzen
+    if (store.useFirebase && db) {
+      db.disableNetwork().then(() => {
+        console.log('Firestore Netzwerk deaktiviert (Offline)');
+      }).catch(e => console.warn('disableNetwork fehlgeschlagen:', e));
+    }
+  });
+
+  // Firestore Snapshot-Metadaten überwachen (zeigt pending writes)
+  if (store.useFirebase && db && store.currentOrgId) {
+    store._col('invoices').onSnapshot({ includeMetadataChanges: true }, (snapshot) => {
+      const hasPending = snapshot.metadata.hasPendingWrites;
+      const fromCache = snapshot.metadata.fromCache;
+      const statusEl = document.getElementById('connection-status');
+      if (statusEl) {
+        if (hasPending) {
+          statusEl.className = 'connection-syncing';
+          statusEl.innerHTML = '<span class="status-dot syncing"></span> Synchronisiert...';
+        } else if (fromCache && !isOnline) {
+          statusEl.className = 'connection-offline';
+          statusEl.innerHTML = '<span class="status-dot offline"></span> Offline';
+        } else {
+          statusEl.className = 'connection-online';
+          statusEl.innerHTML = '<span class="status-dot online"></span> Online';
+        }
+      }
+    });
+  }
+}
+
+function updateConnectionStatus() {
+  const statusEl = document.getElementById('connection-status');
+  if (!statusEl) return;
+  if (isOnline) {
+    statusEl.className = 'connection-online';
+    statusEl.innerHTML = '<span class="status-dot online"></span> Online';
+  } else {
+    statusEl.className = 'connection-offline';
+    statusEl.innerHTML = '<span class="status-dot offline"></span> Offline';
+  }
 }
 
 async function syncToFirebase() {
@@ -928,6 +998,39 @@ async function exportInvoicePDF(invoiceId, skipDialog = false) {
   const sigPath = await window.api.getSignature();
   if (sigPath) signatureData = await window.api.readSignatureBase64(sigPath);
 
+  // EPC QR-Code generieren (nur bei Überweisung + IBAN vorhanden)
+  let qrData = null;
+  if (inv.paymentMethod !== 'bar' && inv.type !== 'gutschrift' && settings.company.iban) {
+    try {
+      const iban = (settings.company.iban || '').replace(/\s/g, '');
+      const bic = (settings.company.bic || '').replace(/\s/g, '');
+      const name = (settings.company.name || '').substring(0, 70);
+      const amount = totals.brutto.toFixed(2);
+      const reference = (inv.number || '').substring(0, 140);
+
+      // EPC QR-Code Format (EPC069-12)
+      const epcLines = [
+        'BCD',           // Service Tag
+        '002',           // Version
+        '1',             // Zeichenkodierung (1 = UTF-8)
+        'SCT',           // Identifikation (SEPA Credit Transfer)
+        bic,             // BIC (optional ab Version 002)
+        name,            // Name des Begünstigten
+        iban,            // IBAN
+        `EUR${amount}`,  // Betrag
+        '',              // Zweck (Purpose Code, optional)
+        '',              // Strukturierte Referenz (optional)
+        reference,       // Unstrukturierter Verwendungszweck
+        '',              // Hinweis an den Nutzer (optional)
+      ];
+
+      const epcString = epcLines.join('\n');
+      qrData = await window.api.generateQRCode(epcString);
+    } catch (e) {
+      console.warn('QR-Code-Generierung fehlgeschlagen:', e);
+    }
+  }
+
   try {
     const pdfBytes = await generateInvoicePDF({
       invoice: inv,
@@ -936,6 +1039,7 @@ async function exportInvoicePDF(invoiceId, skipDialog = false) {
       totals,
       logoData,
       signatureData,
+      qrData,
     });
 
     // Immer automatisch in OneDrive/Daten-Ordner speichern
@@ -3440,9 +3544,7 @@ function initFinanceYearSelect() {
 // MULTI-ORG (Vereine)
 // ==========================
 function getVisibleOrgs() {
-  if (store.userRole === 'admin') {
-    return store.allOrgs;
-  }
+  // Nur Orgs anzeigen zu denen der User gehört
   return store.allOrgs.filter(o => store.userOrgs.includes(o.id));
 }
 
@@ -3451,35 +3553,36 @@ function renderOrgSwitcher() {
   const select = document.getElementById('org-select');
   const visibleOrgs = getVisibleOrgs();
 
-  // Member mit nur 1 Org → kein Switcher nötig
-  if (visibleOrgs.length <= 1 && store.userRole !== 'admin') {
+  // Nur 1 Verein → kein Switcher nötig
+  if (visibleOrgs.length <= 1) {
     switcher.style.display = 'none';
     return;
   }
 
   switcher.style.display = '';
   let html = '';
-  // Nur Admins sehen "Gesamtübersicht"
-  if (store.userRole === 'admin') {
+  // Gesamtübersicht nur wenn Admin in mindestens einem Verein
+  const isAnyAdmin = Object.values(store.orgRoles).includes('admin');
+  if (isAnyAdmin && visibleOrgs.length > 1) {
     html += `<option value="_all" ${!store.currentOrgId ? 'selected' : ''}>Gesamtübersicht</option>`;
   }
-  html += visibleOrgs.map(org =>
-    `<option value="${org.id}" ${store.currentOrgId === org.id ? 'selected' : ''}>${escapeHtml(org.name)}</option>`
-  ).join('');
+  html += visibleOrgs.map(org => {
+    const role = store.orgRoles[org.id] || 'member';
+    const roleLabel = role === 'admin' ? ' (Admin)' : '';
+    return `<option value="${org.id}" ${store.currentOrgId === org.id ? 'selected' : ''}>${escapeHtml(org.name)}${roleLabel}</option>`;
+  }).join('');
   select.innerHTML = html;
 }
 
 async function switchOrg(orgId) {
-  // Zugriffskontrolle: Member dürfen nur auf ihre Orgs zugreifen
-  if (store.userRole !== 'admin') {
-    if (orgId === '_all') {
-      showToast('Kein Zugriff auf Gesamtübersicht', 'error');
-      return;
-    }
-    if (!store.userOrgs.includes(orgId)) {
-      showToast('Kein Zugriff auf diesen Verein', 'error');
-      return;
-    }
+  // Zugriffskontrolle
+  if (orgId !== '_all' && !store.userOrgs.includes(orgId)) {
+    showToast('Kein Zugriff auf diesen Verein', 'error');
+    return;
+  }
+  if (orgId === '_all' && !Object.values(store.orgRoles).includes('admin')) {
+    showToast('Kein Zugriff auf Gesamtübersicht', 'error');
+    return;
   }
 
   if (orgId === '_all') {
@@ -3512,8 +3615,8 @@ async function switchOrg(orgId) {
 }
 
 async function loadAllOrgsData() {
-  // Nur Admins dürfen alle Orgs laden
-  if (!store.useFirebase || !db || store.userRole !== 'admin') return;
+  // Nur wenn User Zugriff hat
+  if (!store.useFirebase || !db) return;
 
   store.customers = [];
   store.invoices = [];
@@ -3557,7 +3660,7 @@ async function loadAllOrgsData() {
 
 // --- Org CRUD (nur Admin) ---
 function showOrgForm() {
-  if (store.userRole !== 'admin') { showToast('Nur Admins können Vereine erstellen', 'error'); return; }
+  // Jeder darf Vereine erstellen (wird dort Admin)
   document.getElementById('org-modal').classList.add('active');
   document.getElementById('org-name').value = '';
 }
@@ -3575,7 +3678,15 @@ async function saveOrg() {
 
   const org = await store.createOrg(name);
   if (org) {
+    // User als Admin zu dieser Org hinzufügen
+    store.userOrgs.push(org.id);
+    store.orgRoles[org.id] = 'admin';
+    await db.collection('users').doc(auth.currentUser.email).update({
+      orgs: store.userOrgs,
+      orgRoles: store.orgRoles,
+    });
     closeOrgModal();
+    await store.loadAllOrgs();
     renderOrgsList();
     renderOrgSwitcher();
     showToast(`Verein "${name}" erstellt`, 'success');
@@ -3585,17 +3696,29 @@ async function saveOrg() {
 }
 
 async function deleteOrg(orgId) {
-  if (store.userRole !== 'admin') { showToast('Nur Admins können Vereine löschen', 'error'); return; }
+  if (store.orgRoles[orgId] !== 'admin') { showToast('Nur Admins dieses Vereins können ihn löschen', 'error'); return; }
   const org = store.allOrgs.find(o => o.id === orgId);
   const ok = await showConfirm({ title: 'Verein löschen', message: `"${org ? org.name : ''}" und ALLE zugehörigen Daten werden unwiderruflich gelöscht!`, icon: '⚠️', confirmText: 'Endgültig löschen' });
   if (!ok) return;
 
   await store.deleteOrg(orgId);
 
+  // Aus eigenen Listen entfernen
+  store.userOrgs = store.userOrgs.filter(id => id !== orgId);
+  delete store.orgRoles[orgId];
+  await db.collection('users').doc(auth.currentUser.email).update({
+    orgs: store.userOrgs,
+    orgRoles: store.orgRoles,
+  });
+
   // Wenn aktive Org gelöscht → wechseln
   if (store.currentOrgId === orgId) {
     const first = store.allOrgs[0];
-    if (first) await store.switchOrg(first.id);
+    if (first) {
+      await store.switchOrg(first.id);
+    } else {
+      store.currentOrgId = null;
+    }
   }
 
   renderOrgsList();
@@ -3615,32 +3738,45 @@ async function renderOrgsList() {
     return;
   }
 
+  const currentEmail = auth && auth.currentUser ? auth.currentUser.email : '';
+
   container.innerHTML = store.allOrgs.map(org => {
     const orgUsers = allUsers.filter(u => (u.orgs || []).includes(org.id));
+    const myRole = store.orgRoles[org.id] || 'member';
+    const isAdmin = myRole === 'admin';
+
     return `
       <div style="background:var(--bg-secondary);border:1px solid var(--border-light);border-radius:var(--radius-lg);padding:24px;margin-bottom:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
           <div>
             <h3 style="font-size:18px;font-weight:700;margin:0;">${escapeHtml(org.name)}</h3>
-            <span style="font-size:12px;color:var(--text-tertiary);">${orgUsers.length} Mitglied${orgUsers.length !== 1 ? 'er' : ''}</span>
+            <span style="font-size:12px;color:var(--text-tertiary);">${orgUsers.length} Mitglied${orgUsers.length !== 1 ? 'er' : ''} · Du bist ${isAdmin ? 'Admin' : 'Mitglied'}</span>
           </div>
-          <div style="display:flex;gap:8px;">
+          ${isAdmin ? `<div style="display:flex;gap:8px;">
             <button class="btn btn-small" onclick="showInviteCode('${org.id}')">🔗 Einladen</button>
             <button class="btn btn-small" onclick="showMemberForm('${org.id}')">+ Mitglied</button>
             <button class="btn btn-small btn-danger" onclick="deleteOrg('${org.id}')">Löschen</button>
-          </div>
+          </div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;">
           ${orgUsers.length === 0 ? '<p style="color:var(--text-tertiary);font-size:13px;">Noch keine Mitglieder zugewiesen.</p>' :
-            orgUsers.map(u => `
+            orgUsers.map(u => {
+              const uRole = (u.orgRoles && u.orgRoles[org.id]) || u.role || 'member';
+              const isSelf = u.email === currentEmail;
+              return `
               <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg-tertiary);border-radius:6px;">
                 <div>
-                  <span style="font-size:13px;font-weight:600;">${escapeHtml(u.email)}</span>
-                  <span class="badge" style="margin-left:8px;font-size:10px;padding:2px 8px;${u.role === 'admin' ? 'background:var(--warning-subtle);color:var(--warning);' : 'background:var(--accent-subtle);color:var(--accent);'}">${u.role === 'admin' ? 'Admin' : 'Mitglied'}</span>
+                  <span style="font-size:13px;font-weight:600;">${escapeHtml(u.email)}${isSelf ? ' (Du)' : ''}</span>
+                  <span class="badge" style="margin-left:8px;font-size:10px;padding:2px 8px;${uRole === 'admin' ? 'background:var(--warning-subtle);color:var(--warning);' : 'background:var(--accent-subtle);color:var(--accent);'}">${uRole === 'admin' ? 'Admin' : 'Mitglied'}</span>
                 </div>
-                ${u.role !== 'admin' ? `<button class="btn-icon" onclick="removeOrgMember('${u.email}','${org.id}')" title="Entfernen" style="color:var(--danger);">✕</button>` : ''}
-              </div>
-            `).join('')}
+                <div style="display:flex;gap:4px;">
+                  ${isAdmin && !isSelf ? `
+                    <button class="btn-icon" onclick="toggleMemberRole('${u.email}','${org.id}','${uRole}')" title="${uRole === 'admin' ? 'Zum Mitglied machen' : 'Zum Admin machen'}" style="font-size:12px;">${uRole === 'admin' ? '👤' : '👑'}</button>
+                    <button class="btn-icon" onclick="removeOrgMember('${u.email}','${org.id}')" title="Entfernen" style="color:var(--danger);">✕</button>
+                  ` : ''}
+                </div>
+              </div>`;
+            }).join('')}
         </div>
       </div>
     `;
@@ -3648,7 +3784,7 @@ async function renderOrgsList() {
 }
 
 function showMemberForm(orgId) {
-  if (store.userRole !== 'admin') { showToast('Nur Admins können Mitglieder verwalten', 'error'); return; }
+  if (store.orgRoles[orgId] !== 'admin') { showToast('Nur Admins können Mitglieder verwalten', 'error'); return; }
   document.getElementById('member-org-id').value = orgId;
   document.getElementById('member-email').value = '';
   document.getElementById('member-modal').classList.add('active');
@@ -3659,8 +3795,8 @@ function closeMemberModal() {
 }
 
 async function addOrgMember() {
-  if (store.userRole !== 'admin') { showToast('Nur Admins können Mitglieder verwalten', 'error'); return; }
   const orgId = document.getElementById('member-org-id').value;
+  if (store.orgRoles[orgId] !== 'admin') { showToast('Nur Admins können Mitglieder verwalten', 'error'); return; }
   const email = document.getElementById('member-email').value.trim().toLowerCase();
 
   if (!email) {
@@ -3668,14 +3804,14 @@ async function addOrgMember() {
     return;
   }
 
-  await store.assignUserToOrg(email, orgId);
+  await store.assignUserToOrg(email, orgId, 'member');
   closeMemberModal();
   renderOrgsList();
-  showToast(`${email} zum Verein hinzugefügt`, 'success');
+  showToast(`${email} als Mitglied hinzugefügt`, 'success');
 }
 
 async function removeOrgMember(email, orgId) {
-  if (store.userRole !== 'admin') { showToast('Nur Admins können Mitglieder entfernen', 'error'); return; }
+  if (store.orgRoles[orgId] !== 'admin') { showToast('Nur Admins können Mitglieder entfernen', 'error'); return; }
   const ok = await showConfirm({ title: 'Mitglied entfernen', message: `${email} aus dem Verein entfernen?`, icon: '👤', confirmText: 'Entfernen' });
   if (!ok) return;
   await store.removeUserFromOrg(email, orgId);
@@ -3683,9 +3819,20 @@ async function removeOrgMember(email, orgId) {
   showToast('Mitglied entfernt', 'success');
 }
 
+async function toggleMemberRole(email, orgId, currentRole) {
+  if (store.orgRoles[orgId] !== 'admin') { showToast('Nur Admins können Rollen ändern', 'error'); return; }
+  const newRole = currentRole === 'admin' ? 'member' : 'admin';
+  const label = newRole === 'admin' ? 'zum Admin' : 'zum Mitglied';
+  const ok = await showConfirm({ title: 'Rolle ändern', message: `${email} ${label} machen?`, icon: newRole === 'admin' ? '👑' : '👤', confirmText: 'Ändern' });
+  if (!ok) return;
+  await store.setUserRole(email, orgId, newRole);
+  renderOrgsList();
+  showToast(`${email} ist jetzt ${newRole === 'admin' ? 'Admin' : 'Mitglied'}`, 'success');
+}
+
 // --- Einladungssystem ---
 function showInviteCode(orgId) {
-  if (store.userRole !== 'admin') { showToast('Nur Admins können einladen', 'error'); return; }
+  if (store.orgRoles[orgId] !== 'admin') { showToast('Nur Admins können einladen', 'error'); return; }
 
   const org = store.allOrgs.find(o => o.id === orgId);
   if (!org) return;

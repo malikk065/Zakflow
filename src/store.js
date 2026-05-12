@@ -18,8 +18,9 @@ class Store {
     // Multi-Org
     this.currentOrgId = null;  // aktive Organisation
     this.userOrgs = [];        // Orgs zu denen der User gehört
-    this.userRole = null;      // 'admin' oder 'member'
-    this.allOrgs = [];         // Alle Orgs (nur für Admin)
+    this.userRole = null;      // 'admin' oder 'member' (im aktuellen Verein)
+    this.orgRoles = {};        // Rolle pro Verein: { orgId: 'admin'|'member' }
+    this.allOrgs = [];         // Alle Orgs des Users
   }
 
   // --- Org-Scoped Collection Helpers ---
@@ -47,32 +48,36 @@ class Store {
       const userDoc = await db.collection('users').doc(email).get();
       if (userDoc.exists) {
         const data = userDoc.data();
-        this.userRole = data.role || 'member';
         this.userOrgs = data.orgs || [];
+        this.orgRoles = data.orgRoles || {};
         this.currentOrgId = data.lastOrgId || (this.userOrgs.length > 0 ? this.userOrgs[0] : null);
-      } else {
-        // Erster User → wird Admin
-        const orgsSnapshot = await db.collection('orgs').get();
-        if (orgsSnapshot.empty) {
-          // Ganz neues System → Admin
-          this.userRole = 'admin';
-          this.userOrgs = [];
-          this.currentOrgId = null;
-        } else {
-          // Orgs existieren, aber User nicht registriert
-          this.userRole = 'member';
-          this.userOrgs = [];
-          this.currentOrgId = null;
+
+        // Migration: alte globale Rolle → orgRoles
+        if (data.role && Object.keys(this.orgRoles).length === 0) {
+          for (const orgId of this.userOrgs) {
+            this.orgRoles[orgId] = data.role;
+          }
+          await db.collection('users').doc(email).update({ orgRoles: this.orgRoles });
         }
+
+        // Aktuelle Rolle = Rolle im aktiven Verein
+        this.userRole = this.currentOrgId ? (this.orgRoles[this.currentOrgId] || 'member') : 'admin';
+      } else {
+        // Neuer User → Admin (erstellt gleich seinen eigenen Verein)
+        this.userRole = 'admin';
+        this.userOrgs = [];
+        this.orgRoles = {};
+        this.currentOrgId = null;
+
         await db.collection('users').doc(email).set({
           email,
-          role: this.userRole,
           orgs: this.userOrgs,
+          orgRoles: this.orgRoles,
           createdAt: new Date().toISOString(),
         });
       }
 
-      // Alle Orgs laden
+      // Alle Orgs laden (nur eigene)
       await this.loadAllOrgs();
     } catch (e) {
       console.warn('User profile load failed:', e);
@@ -82,8 +87,21 @@ class Store {
   async loadAllOrgs() {
     if (!this.useFirebase || !db) return;
     try {
-      const snapshot = await db.collection('orgs').get();
-      this.allOrgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (this.userOrgs.length > 0) {
+        // Nur Orgs laden zu denen der User gehört
+        // Firestore 'in' Query max 30 IDs
+        const chunks = [];
+        for (let i = 0; i < this.userOrgs.length; i += 30) {
+          chunks.push(this.userOrgs.slice(i, i + 30));
+        }
+        this.allOrgs = [];
+        for (const chunk of chunks) {
+          const snapshot = await db.collection('orgs').where(firebase.firestore.FieldPath.documentId(), 'in', chunk).get();
+          this.allOrgs.push(...snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        }
+      } else {
+        this.allOrgs = [];
+      }
     } catch (e) {
       console.warn('Orgs load failed:', e);
     }
@@ -101,6 +119,9 @@ class Store {
       const docRef = await db.collection('orgs').add(org);
       org.id = docRef.id;
       this.allOrgs.push(org);
+
+      // User wird Admin dieser neuen Org
+      this.orgRoles[org.id] = 'admin';
 
       // Default-Settings für die Org erstellen
       await db.collection('orgs').doc(org.id).collection('app').doc('settings').set(this.defaultSettings());
@@ -133,6 +154,7 @@ class Store {
   async switchOrg(orgId) {
     this.stopRealtimeSync();
     this.currentOrgId = orgId;
+    this.userRole = this.orgRoles[orgId] || 'member';
 
     // lastOrgId speichern
     if (auth && auth.currentUser) {
@@ -153,23 +175,25 @@ class Store {
     this.startRealtimeSync();
   }
 
-  async assignUserToOrg(email, orgId) {
+  async assignUserToOrg(email, orgId, role = 'member') {
     if (!this.useFirebase || !db) return;
     try {
       const userDoc = await db.collection('users').doc(email).get();
       if (userDoc.exists) {
         const data = userDoc.data();
         const orgs = data.orgs || [];
+        const orgRoles = data.orgRoles || {};
         if (!orgs.includes(orgId)) {
           orgs.push(orgId);
-          await db.collection('users').doc(email).update({ orgs });
+          orgRoles[orgId] = role;
+          await db.collection('users').doc(email).update({ orgs, orgRoles });
         }
       } else {
-        // Neuen User anlegen
+        // Neuen User-Eintrag anlegen (User hat sich noch nicht registriert)
         await db.collection('users').doc(email).set({
           email,
-          role: 'member',
           orgs: [orgId],
+          orgRoles: { [orgId]: role },
           createdAt: new Date().toISOString(),
         });
       }
@@ -185,17 +209,25 @@ class Store {
       if (userDoc.exists) {
         const data = userDoc.data();
         const orgs = (data.orgs || []).filter(id => id !== orgId);
-        await db.collection('users').doc(email).update({ orgs });
+        const orgRoles = data.orgRoles || {};
+        delete orgRoles[orgId];
+        await db.collection('users').doc(email).update({ orgs, orgRoles });
       }
     } catch (e) {
       console.warn('User remove failed:', e);
     }
   }
 
-  async setUserRole(email, role) {
+  async setUserRole(email, orgId, role) {
     if (!this.useFirebase || !db) return;
     try {
-      await db.collection('users').doc(email).update({ role });
+      const userDoc = await db.collection('users').doc(email).get();
+      if (userDoc.exists) {
+        const data = userDoc.data();
+        const orgRoles = data.orgRoles || {};
+        orgRoles[orgId] = role;
+        await db.collection('users').doc(email).update({ orgRoles });
+      }
     } catch (e) {
       console.warn('Role set failed:', e);
     }
@@ -213,59 +245,34 @@ class Store {
   startRealtimeSync() {
     if (!this.useFirebase) return;
 
-    // Kunden-Listener
-    const unsubCustomers = this._col('customers').onSnapshot(snapshot => {
-      this.customers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      if (this.onDataChanged) this.onDataChanged('customers');
-    }, err => console.warn('Kunden-Listener Fehler:', err));
-    this._listeners.push(unsubCustomers);
+    // Helper: Listener mit lokalem Backup
+    const listenAndBackup = (colName, prop, saveFn) => {
+      const unsub = this._col(colName).onSnapshot(snapshot => {
+        this[prop] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Lokales Backup speichern (für harten Offline-Fall)
+        if (this.isElectron && saveFn) {
+          saveFn(this[prop]).catch(() => {});
+        }
+        if (this.onDataChanged) this.onDataChanged(colName);
+      }, err => console.warn(`${colName}-Listener Fehler:`, err));
+      this._listeners.push(unsub);
+    };
 
-    // Rechnungen-Listener
-    const unsubInvoices = this._col('invoices').onSnapshot(snapshot => {
-      this.invoices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      if (this.onDataChanged) this.onDataChanged('invoices');
-    }, err => console.warn('Rechnungen-Listener Fehler:', err));
-    this._listeners.push(unsubInvoices);
+    listenAndBackup('customers', 'customers', d => window.api.saveCustomers(d));
+    listenAndBackup('invoices', 'invoices', d => window.api.saveInvoices(d));
+    listenAndBackup('expenses', 'expenses', d => window.api.saveExpenses(d));
+    listenAndBackup('donations', 'donations', d => window.api.saveDonations(d));
+    listenAndBackup('contacts', 'contacts', d => window.api.saveContacts(d));
+    listenAndBackup('documents', 'documents', d => window.api.saveDocuments(d));
+    listenAndBackup('events', 'events', d => window.api.saveEvents(d));
 
-    // Ausgaben-Listener
-    const unsubExpenses = this._col('expenses').onSnapshot(snapshot => {
-      this.expenses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      if (this.onDataChanged) this.onDataChanged('expenses');
-    }, err => console.warn('Ausgaben-Listener Fehler:', err));
-    this._listeners.push(unsubExpenses);
-
-    // Spenden-Listener
-    const unsubDonations = this._col('donations').onSnapshot(snapshot => {
-      this.donations = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      if (this.onDataChanged) this.onDataChanged('donations');
-    }, err => console.warn('Spenden-Listener Fehler:', err));
-    this._listeners.push(unsubDonations);
-
-    // Kontakte-Listener
-    const unsubContacts = this._col('contacts').onSnapshot(snapshot => {
-      this.contacts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      if (this.onDataChanged) this.onDataChanged('contacts');
-    }, err => console.warn('Kontakte-Listener Fehler:', err));
-    this._listeners.push(unsubContacts);
-
-    // Dokumente-Listener
-    const unsubDocuments = this._col('documents').onSnapshot(snapshot => {
-      this.documents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      if (this.onDataChanged) this.onDataChanged('documents');
-    }, err => console.warn('Dokumente-Listener Fehler:', err));
-    this._listeners.push(unsubDocuments);
-
-    // Events-Listener
-    const unsubEvents = this._col('events').onSnapshot(snapshot => {
-      this.events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      if (this.onDataChanged) this.onDataChanged('events');
-    }, err => console.warn('Events-Listener Fehler:', err));
-    this._listeners.push(unsubEvents);
-
-    // Settings-Listener
+    // Settings-Listener (speziell, da kein Collection sondern einzelnes Doc)
     const unsubSettings = this._settingsDoc().onSnapshot(doc => {
       if (doc.exists) {
         this.settings = doc.data();
+        if (this.isElectron) {
+          window.api.saveSettings(this.settings).catch(() => {});
+        }
         if (this.onDataChanged) this.onDataChanged('settings');
       }
     }, err => console.warn('Settings-Listener Fehler:', err));

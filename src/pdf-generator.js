@@ -1,7 +1,7 @@
 // PDF Generator mit pdf-lib
 // pdf-lib wird als UMD-Script im HTML vor diesem Skript geladen
 
-async function generateInvoicePDF({ invoice, settings, customer, totals, logoData, signatureData }) {
+async function generateInvoicePDF({ invoice, settings, customer, totals, logoData, signatureData, qrData }) {
   const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
   const doc = await PDFDocument.create();
@@ -473,13 +473,38 @@ async function generateInvoicePDF({ invoice, settings, customer, totals, logoDat
     });
     y -= 20;
 
-    // Bankdaten
+    // Bankdaten + QR-Code
     if (settings.company.bankName || settings.company.iban) {
       const bankInfo = [
         settings.company.bankName ? `Bank: ${settings.company.bankName}` : '',
         settings.company.iban ? `IBAN: ${settings.company.iban}` : '',
         settings.company.bic ? `BIC: ${settings.company.bic}` : '',
       ].filter(Boolean);
+
+      // QR-Code rechts neben den Bankdaten einbetten
+      let qrSize = 0;
+      if (qrData) {
+        try {
+          const qrImage = await doc.embedPng(Uint8Array.from(atob(qrData), c => c.charCodeAt(0)));
+          qrSize = 80;
+          const qrX = width - marginRight - qrSize;
+          const qrY = y - qrSize + 14;
+          page.drawImage(qrImage, { x: qrX, y: qrY, width: qrSize, height: qrSize });
+          // Label unter dem QR-Code
+          const qrLabel = 'Scan to Pay';
+          const qrLabelW = fontRegular.widthOfTextAtSize(qrLabel, 7);
+          page.drawText(qrLabel, {
+            x: qrX + (qrSize - qrLabelW) / 2,
+            y: qrY - 10,
+            size: 7,
+            font: fontRegular,
+            color: gray,
+          });
+        } catch (e) {
+          console.warn('QR-Code-Embed-Fehler:', e);
+          qrSize = 0;
+        }
+      }
 
       for (const line of bankInfo) {
         page.drawText(line, {
@@ -490,6 +515,11 @@ async function generateInvoicePDF({ invoice, settings, customer, totals, logoDat
           color: black,
         });
         y -= 14;
+      }
+
+      // Extra Platz wenn QR-Code höher als Bankdaten
+      if (qrSize > 0 && bankInfo.length * 14 < qrSize) {
+        y -= (qrSize - bankInfo.length * 14) + 10;
       }
     }
   }

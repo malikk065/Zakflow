@@ -21,17 +21,27 @@
       "node_modules/firebase/firebase-app-compat.js",
       "node_modules/firebase/firebase-firestore-compat.js",
       "node_modules/firebase/firebase-auth-compat.js",
+      "node_modules/qrcode/**/*",
+      "node_modules/dijkstrajs/**/*",
+      "node_modules/pngjs/**/*",
+      "node_modules/encode-utf8/**/*",
       "build/icon.png"
     ],
     "mac": {
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "category": "public.app-category.finance",
@@ -61,7 +71,8 @@
   "dependencies": {
     "firebase": "^10.14.1",
     "pdf-lib": "^1.17.1",
-    "pdf-parse": "^1.1.1"
+    "pdf-parse": "^1.1.1",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "electron": "^35.0.0",

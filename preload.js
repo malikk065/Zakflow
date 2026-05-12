@@ -81,4 +81,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // Font
   loadFont: (fontName) => ipcRenderer.invoke('font:load', fontName),
+
+  // QR Code
+  generateQRCode: (text) => ipcRenderer.invoke('qrcode:generate', text),
 });

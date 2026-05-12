@@ -649,6 +649,24 @@ ipcMain.handle('pdf:import', async () => {
   return imported;
 });
 
+// QR Code generieren
+ipcMain.handle('qrcode:generate', async (_event, text) => {
+  try {
+    const QRCode = require('qrcode');
+    const dataUrl = await QRCode.toDataURL(text, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 200,
+      color: { dark: '#000000', light: '#ffffff' },
+    });
+    // Return base64 PNG data (strip "data:image/png;base64,")
+    return dataUrl.split(',')[1];
+  } catch (e) {
+    console.error('QR-Code-Fehler:', e.message);
+    return null;
+  }
+});
+
 // Fonts laden für PDF
 ipcMain.handle('font:load', async (_event, fontName) => {
   // Versuche System-Fonts zu laden

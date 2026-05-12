@@ -24,7 +24,21 @@ async function initFirebase(config) {
     db = firebase.firestore();
     auth = firebase.auth();
 
-    // Persistence setzen — mit Fallback falls IndexedDB kaputt ist
+    // Firestore Offline-Persistence aktivieren (IndexedDB-Cache)
+    try {
+      await db.enablePersistence({ synchronizeTabs: false });
+      console.log('Firestore Offline-Persistence aktiviert');
+    } catch (e) {
+      if (e.code === 'failed-precondition') {
+        console.warn('Offline-Persistence: Mehrere Tabs offen, nur in einem Tab möglich');
+      } else if (e.code === 'unimplemented') {
+        console.warn('Offline-Persistence: Browser unterstützt es nicht');
+      } else {
+        console.warn('Offline-Persistence fehlgeschlagen:', e.message);
+      }
+    }
+
+    // Auth Persistence setzen — mit Fallback falls IndexedDB kaputt ist
     try {
       await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
     } catch (e) {
