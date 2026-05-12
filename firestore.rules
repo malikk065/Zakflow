@@ -3,10 +3,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // =====================
-    // HELPER FUNCTIONS
-    // =====================
-
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -15,68 +11,78 @@ service cloud.firestore {
       return request.auth.token.email;
     }
 
-    // Prüft ob der User Mitglied einer Org ist
     function isMemberOfOrg(orgId) {
       return isAuthenticated() &&
         exists(/databases/$(database)/documents/users/$(userEmail())) &&
         orgId in get(/databases/$(database)/documents/users/$(userEmail())).data.orgs;
     }
 
-    // =====================
-    // USER-PROFILE
-    // =====================
     match /users/{email} {
-      // Jeder eingeloggte User kann Profile lesen (für Mitgliederlisten)
       allow read: if isAuthenticated();
-      // Eigenes Profil erstellen
       allow create: if isAuthenticated() && userEmail() == email;
-      // Eigenes Profil oder andere (Mitgliederverwaltung durch Admin — Code prüft Berechtigung)
       allow update: if isAuthenticated();
     }
 
-    // =====================
-    // ORGS (Vereine)
-    // =====================
     match /orgs/{orgId} {
-      // Jeder eingeloggte User kann Orgs erstellen (wird dort Admin)
       allow create: if isAuthenticated();
-      // Mitglieder können ihre Org lesen
       allow read: if isAuthenticated();
-      // Mitglieder können updaten, Admin-Check passiert im Code
       allow update, delete: if isAuthenticated();
 
-      // Alle Sub-Collections einer Org
-      match /{collection}/{docId} {
-        allow read, write: if isAuthenticated();
+      // Teams — öffentlich lesbar (für Team-Ausgaben-Link ohne Login)
+      match /teams/{docId} {
+        allow read: if true;
+        allow write: if isAuthenticated();
       }
 
-      // App-Settings (orgs/{orgId}/app/settings)
+      // Expenses — öffentlich lesbar + schreibbar (Team-Link von außen)
+      match /expenses/{docId} {
+        allow read, write: if true;
+      }
+
+      // App-Settings — öffentlich lesbar (Kategorien für Team-Link)
       match /app/{docId} {
-        allow read, write: if isAuthenticated();
+        allow read: if true;
+        allow write: if isAuthenticated();
       }
 
-      // Meta (orgs/{orgId}/meta/...)
+      // Meta-Settings — öffentlich lesbar (Kategorien für Team-Link)
       match /meta/{docId} {
+        allow read: if true;
+        allow write: if isAuthenticated();
+      }
+
+      // Alle anderen Sub-Collections (customers, invoices, donations, contacts, documents, events)
+      match /customers/{docId} {
+        allow read, write: if isAuthenticated();
+      }
+      match /invoices/{docId} {
+        allow read, write: if isAuthenticated();
+      }
+      match /donations/{docId} {
+        allow read, write: if isAuthenticated();
+      }
+      match /contacts/{docId} {
+        allow read, write: if isAuthenticated();
+      }
+      match /documents/{docId} {
+        allow read, write: if isAuthenticated();
+      }
+      match /events/{docId} {
         allow read, write: if isAuthenticated();
       }
     }
 
-    // =====================
-    // LEGACY ROOT COLLECTIONS
-    // =====================
+    // Legacy Root Collections
     match /app/{docId} {
       allow read, write: if isAuthenticated();
     }
-
     match /teams/{teamId} {
       allow read: if true;
       allow write: if isAuthenticated();
     }
-
     match /expenses/{expenseId} {
       allow read, write: if true;
     }
-
     match /customers/{docId} {
       allow read, write: if isAuthenticated();
     }
@@ -96,9 +102,6 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
-    // =====================
-    // ALLES ANDERE BLOCKIEREN
-    // =====================
     match /{document=**} {
       allow read, write: if false;
     }
