@@ -147,6 +147,10 @@
           <span class="nav-icon">📅</span>
           <span>Kalender</span>
         </li>
+        <li class="nav-item" data-tab="shopping">
+          <span class="nav-icon">🛒</span>
+          <span>Einkaufsliste</span>
+        </li>
         <li class="nav-item" data-tab="orgs" id="nav-orgs" style="display:none;">
           <span class="nav-icon">&#127970;</span>
           <span>Vereine</span>
@@ -1061,6 +1065,72 @@
               </div>
             </form>
           </div>
+        </div>
+      </section>
+
+      <!-- Einkaufsliste -->
+      <section id="tab-shopping" class="tab-content">
+        <div class="tab-header">
+          <h2>🛒 Einkaufsliste</h2>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost" onclick="clearCompletedItems()">Erledigte entfernen</button>
+            <button class="btn btn-primary" onclick="showAddShoppingItem()">+ Neuer Eintrag</button>
+          </div>
+        </div>
+
+        <!-- Tage-Filter -->
+        <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+          <button class="btn btn-small shopping-day-btn active" data-day="all" onclick="filterShoppingDay('all')">Alle</button>
+          <button class="btn btn-small shopping-day-btn" data-day="today" onclick="filterShoppingDay('today')">Heute</button>
+          <button class="btn btn-small shopping-day-btn" data-day="tomorrow" onclick="filterShoppingDay('tomorrow')">Morgen</button>
+          <button class="btn btn-small shopping-day-btn" data-day="week" onclick="filterShoppingDay('week')">Diese Woche</button>
+          <button class="btn btn-small shopping-day-btn" data-day="nodate" onclick="filterShoppingDay('nodate')">Ohne Datum</button>
+        </div>
+
+        <!-- Schnell-Hinzufügen -->
+        <div id="shopping-quick-add" style="display:none;margin-bottom:20px;">
+          <div style="background:var(--bg-secondary);border:1px solid var(--border-light);border-radius:var(--radius-lg);padding:20px;">
+            <div style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;">
+              <div class="form-group" style="flex:2;min-width:180px;margin-bottom:0;">
+                <label>Artikel *</label>
+                <input type="text" id="shopping-item-name" placeholder="z.B. Milch, Druckerpapier..." onkeydown="if(event.key==='Enter'){addShoppingItem();}">
+              </div>
+              <div class="form-group" style="flex:1;min-width:80px;margin-bottom:0;">
+                <label>Menge</label>
+                <input type="text" id="shopping-item-qty" placeholder="z.B. 2x, 500g" onkeydown="if(event.key==='Enter'){addShoppingItem();}">
+              </div>
+              <div class="form-group" style="flex:1;min-width:130px;margin-bottom:0;">
+                <label>Kategorie</label>
+                <select id="shopping-item-category">
+                  <option value="">— Keine —</option>
+                  <option value="lebensmittel">🍎 Lebensmittel</option>
+                  <option value="getraenke">🥤 Getränke</option>
+                  <option value="haushalt">🧹 Haushalt</option>
+                  <option value="buero">📎 Büro</option>
+                  <option value="drogerie">🧴 Drogerie</option>
+                  <option value="technik">💻 Technik</option>
+                  <option value="sonstiges">📦 Sonstiges</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex:1;min-width:130px;margin-bottom:0;">
+                <label>Tag</label>
+                <input type="date" id="shopping-item-date">
+              </div>
+              <div class="form-group" style="flex:0;margin-bottom:0;">
+                <label>&nbsp;</label>
+                <button class="btn btn-primary" onclick="addShoppingItem()" style="white-space:nowrap;">Hinzufügen</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Liste -->
+        <div id="shopping-list"></div>
+
+        <div id="shopping-empty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-tertiary);">
+          <div style="font-size:48px;margin-bottom:12px;">🛒</div>
+          <p style="font-size:15px;font-weight:600;">Einkaufsliste ist leer</p>
+          <p style="font-size:13px;margin-top:4px;">Klicke auf "+ Neuer Eintrag" um Artikel hinzuzufügen.</p>
         </div>
       </section>
 

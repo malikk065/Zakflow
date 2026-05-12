@@ -147,6 +147,7 @@ async function initApp() {
   await store.loadContacts();
   await store.loadDocuments();
   await store.loadEvents();
+  await store.loadShoppingList();
   savedItems = await window.api.getSavedItems() || [];
 
   // Lokale Daten nach Firebase synchronisieren
@@ -176,6 +177,9 @@ async function initApp() {
     if (type === 'events') {
       renderCalendar();
     }
+    if (type === 'shopping') {
+      renderShoppingList();
+    }
     if (type === 'settings') {
       loadExpenseCategories();
       renderSettingsForm();
@@ -195,6 +199,7 @@ async function initApp() {
   renderContactsList();
   renderDocumentsList();
   renderCalendar();
+  renderShoppingList();
   await loadTeams();
   renderSettingsForm();
   renderExpenseCategoriesSettings();
@@ -380,6 +385,7 @@ function switchTab(tabName) {
   if (tabName === 'calendar') renderCalendar();
   if (tabName === 'finances') { initFinanceYearSelect(); renderFinances(); }
   if (tabName === 'new-invoice') updateInvoiceForm();
+  if (tabName === 'shopping') renderShoppingList();
   if (tabName === 'orgs') renderOrgsList();
 }
 
@@ -3610,6 +3616,7 @@ async function switchOrg(orgId) {
   renderContactsList();
   renderDocumentsList();
   renderCalendar();
+  renderShoppingList();
   await loadTeams();
   renderSettingsForm();
   renderExpenseCategoriesSettings();
@@ -3942,4 +3949,182 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+// ==========================
+// EINKAUFSLISTE
+// ==========================
+let shoppingFilter = 'all';
+
+const SHOPPING_CATEGORIES = {
+  lebensmittel: { label: 'Lebensmittel', icon: '🍎' },
+  getraenke: { label: 'Getränke', icon: '🥤' },
+  haushalt: { label: 'Haushalt', icon: '🧹' },
+  buero: { label: 'Büro', icon: '📎' },
+  drogerie: { label: 'Drogerie', icon: '🧴' },
+  technik: { label: 'Technik', icon: '💻' },
+  sonstiges: { label: 'Sonstiges', icon: '📦' },
+};
+
+function showAddShoppingItem() {
+  const quickAdd = document.getElementById('shopping-quick-add');
+  quickAdd.style.display = quickAdd.style.display === 'none' ? '' : 'none';
+  if (quickAdd.style.display !== 'none') {
+    document.getElementById('shopping-item-name').focus();
+  }
+}
+
+async function addShoppingItem() {
+  const name = document.getElementById('shopping-item-name').value.trim();
+  if (!name) {
+    showToast('Bitte einen Artikel eingeben', 'error');
+    return;
+  }
+
+  const qty = document.getElementById('shopping-item-qty').value.trim();
+  const category = document.getElementById('shopping-item-category').value;
+  const date = document.getElementById('shopping-item-date').value;
+
+  await store.addShoppingItem({
+    name,
+    quantity: qty,
+    category,
+    date: date || '',
+  });
+
+  // Felder zurücksetzen
+  document.getElementById('shopping-item-name').value = '';
+  document.getElementById('shopping-item-qty').value = '';
+  document.getElementById('shopping-item-name').focus();
+
+  renderShoppingList();
+}
+
+async function toggleShoppingItem(id) {
+  const item = store.shoppingList.find(i => i.id === id);
+  if (!item) return;
+  await store.updateShoppingItem(id, { done: !item.done });
+  renderShoppingList();
+}
+
+async function deleteShoppingItem(id) {
+  await store.deleteShoppingItem(id);
+  renderShoppingList();
+}
+
+async function clearCompletedItems() {
+  const completed = store.shoppingList.filter(i => i.done);
+  if (completed.length === 0) {
+    showToast('Keine erledigten Einträge vorhanden', 'info');
+    return;
+  }
+  const ok = await showConfirm({
+    title: 'Erledigte entfernen',
+    message: `${completed.length} erledigte${completed.length === 1 ? 'n' : ''} Einträge entfernen?`,
+    icon: '🗑️',
+    confirmText: 'Entfernen',
+  });
+  if (!ok) return;
+  await store.clearCompletedShopping();
+  renderShoppingList();
+  showToast(`${completed.length} Einträge entfernt`, 'success');
+}
+
+function filterShoppingDay(day) {
+  shoppingFilter = day;
+  document.querySelectorAll('.shopping-day-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.day === day);
+  });
+  renderShoppingList();
+}
+
+function getFilteredShoppingList() {
+  const today = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  const weekEnd = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+
+  return store.shoppingList.filter(item => {
+    if (shoppingFilter === 'all') return true;
+    if (shoppingFilter === 'today') return item.date === today;
+    if (shoppingFilter === 'tomorrow') return item.date === tomorrow;
+    if (shoppingFilter === 'week') return item.date >= today && item.date <= weekEnd;
+    if (shoppingFilter === 'nodate') return !item.date;
+    return true;
+  });
+}
+
+function renderShoppingList() {
+  const container = document.getElementById('shopping-list');
+  const empty = document.getElementById('shopping-empty');
+  if (!container) return;
+
+  const items = getFilteredShoppingList();
+
+  if (items.length === 0) {
+    container.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  // Gruppieren nach Datum
+  const groups = {};
+  for (const item of items) {
+    const key = item.date || '_nodate';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(item);
+  }
+
+  // Sortierung: Heute zuerst, dann chronologisch, "ohne Datum" am Ende
+  const sortedKeys = Object.keys(groups).sort((a, b) => {
+    if (a === '_nodate') return 1;
+    if (b === '_nodate') return -1;
+    return a.localeCompare(b);
+  });
+
+  const today = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+
+  container.innerHTML = sortedKeys.map(key => {
+    let dayLabel = 'Ohne Datum';
+    if (key !== '_nodate') {
+      if (key === today) dayLabel = '📌 Heute';
+      else if (key === tomorrow) dayLabel = '📅 Morgen';
+      else {
+        const d = new Date(key);
+        const weekday = d.toLocaleDateString('de-DE', { weekday: 'long' });
+        dayLabel = `${weekday}, ${d.toLocaleDateString('de-DE')}`;
+      }
+    }
+
+    const groupItems = groups[key];
+    const doneCount = groupItems.filter(i => i.done).length;
+    const totalCount = groupItems.length;
+
+    return `
+      <div class="shopping-group">
+        <div class="shopping-group-header">
+          <span class="shopping-group-title">${dayLabel}</span>
+          <span class="shopping-group-count">${doneCount}/${totalCount}</span>
+        </div>
+        <div class="shopping-group-items">
+          ${groupItems.map(item => {
+            const cat = SHOPPING_CATEGORIES[item.category];
+            const catIcon = cat ? cat.icon : '';
+            return `
+            <div class="shopping-item ${item.done ? 'done' : ''}" onclick="toggleShoppingItem('${item.id}')">
+              <div class="shopping-checkbox ${item.done ? 'checked' : ''}">
+                ${item.done ? '✓' : ''}
+              </div>
+              <div class="shopping-item-info">
+                <span class="shopping-item-name">${catIcon ? catIcon + ' ' : ''}${escapeHtml(item.name)}</span>
+                ${item.quantity ? `<span class="shopping-item-qty">${escapeHtml(item.quantity)}</span>` : ''}
+              </div>
+              <button class="btn-icon shopping-delete" onclick="event.stopPropagation();deleteShoppingItem('${item.id}')" title="Löschen">✕</button>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
 }

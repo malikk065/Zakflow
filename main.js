@@ -649,6 +649,18 @@ ipcMain.handle('pdf:import', async () => {
   return imported;
 });
 
+// Shopping List
+ipcMain.handle('shopping:getAll', () => {
+  const filePath = path.join(getDataPath(), 'shopping.json');
+  return readJSON(filePath) || [];
+});
+
+ipcMain.handle('shopping:save', (_event, items) => {
+  const filePath = path.join(getDataPath(), 'shopping.json');
+  writeJSON(filePath, items);
+  return true;
+});
+
 // QR Code generieren
 ipcMain.handle('qrcode:generate', async (_event, text) => {
   try {

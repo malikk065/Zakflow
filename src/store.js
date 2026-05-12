@@ -10,6 +10,7 @@ class Store {
     this.contacts = [];
     this.documents = [];
     this.events = [];
+    this.shoppingList = [];
     this.useFirebase = false;
     this.isElectron = typeof window.api !== 'undefined';
     this._listeners = [];
@@ -266,6 +267,7 @@ class Store {
     listenAndBackup('contacts', 'contacts', d => window.api.saveContacts(d));
     listenAndBackup('documents', 'documents', d => window.api.saveDocuments(d));
     listenAndBackup('events', 'events', d => window.api.saveEvents(d));
+    listenAndBackup('shopping', 'shoppingList', d => window.api.saveShoppingList(d));
 
     // Settings-Listener (speziell, da kein Collection sondern einzelnes Doc)
     const unsubSettings = this._settingsDoc().onSnapshot(doc => {
@@ -791,6 +793,85 @@ class Store {
   }
 
   getEvent(id) { return this.events.find(e => e.id === id) || null; }
+
+  // --- Shopping List ---
+  async loadShoppingList() {
+    if (this.useFirebase) {
+      try {
+        const snapshot = await this._col('shopping').get();
+        if (!snapshot.empty) {
+          this.shoppingList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          return this.shoppingList;
+        }
+      } catch (e) { console.warn('Firebase shopping load failed:', e); }
+    }
+    if (this.isElectron) {
+      this.shoppingList = await window.api.getShoppingList();
+    }
+    return this.shoppingList;
+  }
+
+  async saveShoppingList() {
+    if (this.isElectron) {
+      await window.api.saveShoppingList(this.shoppingList);
+    }
+  }
+
+  async addShoppingItem(item) {
+    item.id = this.generateId();
+    item.createdAt = new Date().toISOString();
+    item.done = false;
+    this.shoppingList.push(item);
+
+    if (this.useFirebase) {
+      try {
+        await this._col('shopping').doc(item.id).set(item);
+      } catch (e) { console.warn('Firebase shopping add failed:', e); }
+    }
+    if (this.isElectron) await this.saveShoppingList();
+    return item;
+  }
+
+  async updateShoppingItem(id, data) {
+    const index = this.shoppingList.findIndex(i => i.id === id);
+    if (index !== -1) {
+      this.shoppingList[index] = { ...this.shoppingList[index], ...data };
+
+      if (this.useFirebase) {
+        try {
+          await this._col('shopping').doc(id).update(data);
+        } catch (e) { console.warn('Firebase shopping update failed:', e); }
+      }
+      if (this.isElectron) await this.saveShoppingList();
+      return this.shoppingList[index];
+    }
+    return null;
+  }
+
+  async deleteShoppingItem(id) {
+    this.shoppingList = this.shoppingList.filter(i => i.id !== id);
+
+    if (this.useFirebase) {
+      try {
+        await this._col('shopping').doc(id).delete();
+      } catch (e) { console.warn('Firebase shopping delete failed:', e); }
+    }
+    if (this.isElectron) await this.saveShoppingList();
+  }
+
+  async clearCompletedShopping() {
+    const completed = this.shoppingList.filter(i => i.done);
+    this.shoppingList = this.shoppingList.filter(i => !i.done);
+
+    if (this.useFirebase) {
+      for (const item of completed) {
+        try {
+          await this._col('shopping').doc(item.id).delete();
+        } catch (e) {}
+      }
+    }
+    if (this.isElectron) await this.saveShoppingList();
+  }
 
   getNextDonationNumber(prefix = 'SQ') {
     const year = new Date().getFullYear();

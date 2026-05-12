@@ -82,6 +82,10 @@ contextBridge.exposeInMainWorld('api', {
   // Font
   loadFont: (fontName) => ipcRenderer.invoke('font:load', fontName),
 
+  // Shopping List
+  getShoppingList: () => ipcRenderer.invoke('shopping:getAll'),
+  saveShoppingList: (items) => ipcRenderer.invoke('shopping:save', items),
+
   // QR Code
   generateQRCode: (text) => ipcRenderer.invoke('qrcode:generate', text),
 });
