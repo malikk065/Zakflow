@@ -26,7 +26,7 @@ async function initFirebase(config) {
 
     // Firestore Offline-Persistence aktivieren (IndexedDB-Cache)
     try {
-      await db.enablePersistence({ synchronizeTabs: false });
+      await db.enablePersistence();
       console.log('Firestore Offline-Persistence aktiviert');
     } catch (e) {
       if (e.code === 'failed-precondition') {
@@ -34,7 +34,7 @@ async function initFirebase(config) {
       } else if (e.code === 'unimplemented') {
         console.warn('Offline-Persistence: Browser unterstützt es nicht');
       } else {
-        console.warn('Offline-Persistence fehlgeschlagen:', e.message);
+        console.warn('Offline-Persistence fehlgeschlagen:', e.code, e.message);
       }
     }
 

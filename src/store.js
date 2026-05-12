@@ -109,29 +109,29 @@ class Store {
   }
 
   async createOrg(name) {
-    if (!this.useFirebase || !db) return null;
+    if (!this.useFirebase) {
+      throw new Error('Firebase nicht aktiv (useFirebase=false)');
+    }
+    if (!db) {
+      throw new Error('Firestore DB nicht initialisiert (db=null)');
+    }
 
     const org = {
       name,
       createdAt: new Date().toISOString(),
     };
 
-    try {
-      const docRef = await db.collection('orgs').add(org);
-      org.id = docRef.id;
-      this.allOrgs.push(org);
+    const docRef = await db.collection('orgs').add(org);
+    org.id = docRef.id;
+    this.allOrgs.push(org);
 
-      // User wird Admin dieser neuen Org
-      this.orgRoles[org.id] = 'admin';
+    // User wird Admin dieser neuen Org
+    this.orgRoles[org.id] = 'admin';
 
-      // Default-Settings für die Org erstellen
-      await db.collection('orgs').doc(org.id).collection('app').doc('settings').set(this.defaultSettings());
+    // Default-Settings für die Org erstellen
+    await db.collection('orgs').doc(org.id).collection('app').doc('settings').set(this.defaultSettings());
 
-      return org;
-    } catch (e) {
-      console.warn('Org create failed:', e);
-      return null;
-    }
+    return org;
   }
 
   async deleteOrg(orgId) {
