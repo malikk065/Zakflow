@@ -103,9 +103,8 @@ async function initApp() {
 
     renderOrgSwitcher();
 
-    // Vereine-Tab anzeigen wenn User Admin in mindestens einem Verein ist
-    const isAnyAdmin = Object.values(store.orgRoles).includes('admin');
-    document.getElementById('nav-orgs').style.display = isAnyAdmin ? '' : 'none';
+    // Vereine-Tab immer anzeigen
+    document.getElementById('nav-orgs').style.display = '';
 
     // Org zuweisen
     if (!store.currentOrgId && store.userOrgs.length > 0) {
