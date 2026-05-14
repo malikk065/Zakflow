@@ -999,14 +999,9 @@ async function exportInvoicePDF(invoiceId, skipDialog = false) {
   const customer = store.getCustomer(inv.customerId);
   const totals = store.calculateInvoiceTotal(inv);
 
-  // Logo + Unterschrift laden
-  let logoData = null;
-  const logoPath = await window.api.getLogo();
-  if (logoPath) logoData = await window.api.readLogoBase64(logoPath);
-
-  let signatureData = null;
-  const sigPath = await window.api.getSignature();
-  if (sigPath) signatureData = await window.api.readSignatureBase64(sigPath);
+  // Logo + Unterschrift laden (lokal → Firebase Fallback)
+  const logoData = await getLogoData();
+  const signatureData = await getSignatureData();
 
   // EPC QR-Code generieren (nur bei Überweisung + IBAN vorhanden)
   let qrData = null;
@@ -1227,6 +1222,8 @@ async function renderSettingsForm() {
 
 async function renderLogoPreview() {
   const preview = document.getElementById('logo-preview');
+
+  // 1. Lokale Datei versuchen
   const logoPath = await window.api.getLogo();
   if (logoPath) {
     const logoData = await window.api.readLogoBase64(logoPath);
@@ -1235,21 +1232,33 @@ async function renderLogoPreview() {
       return;
     }
   }
+
+  // 2. Fallback: Firebase Base64
+  if (store.settings && store.settings.logoBase64) {
+    const mimeType = store.settings.logoMimeType || 'image/png';
+    preview.innerHTML = `<img src="data:${mimeType};base64,${store.settings.logoBase64}" alt="Logo">`;
+    return;
+  }
+
   preview.innerHTML = '<span class="logo-placeholder">Kein Logo</span>';
 }
 
 async function uploadLogo() {
-  console.log('uploadLogo aufgerufen');
   try {
     const result = await window.api.uploadLogo();
-    console.log('uploadLogo Ergebnis:', result);
     if (result) {
       store.settings.logoPath = result;
+
+      // Logo als Base64 in Firebase speichern (Geräte-Sync)
+      const logoData = await window.api.readLogoBase64(result);
+      if (logoData) {
+        store.settings.logoBase64 = logoData.data;
+        store.settings.logoMimeType = logoData.mimeType;
+      }
+
       await store.saveSettings(store.settings);
       showToast('Logo hochgeladen', 'success');
       await renderLogoPreview();
-    } else {
-      console.log('Upload abgebrochen oder fehlgeschlagen');
     }
   } catch (err) {
     console.error('uploadLogo Fehler:', err);
@@ -1260,6 +1269,8 @@ async function uploadLogo() {
 async function renderSignaturePreview() {
   const preview = document.getElementById('signature-preview');
   if (!preview) return;
+
+  // 1. Lokale Datei versuchen
   const sigPath = await window.api.getSignature();
   if (sigPath) {
     const sigData = await window.api.readSignatureBase64(sigPath);
@@ -1268,6 +1279,14 @@ async function renderSignaturePreview() {
       return;
     }
   }
+
+  // 2. Fallback: Firebase Base64
+  if (store.settings && store.settings.signatureBase64) {
+    const mimeType = store.settings.signatureMimeType || 'image/png';
+    preview.innerHTML = `<img src="data:${mimeType};base64,${store.settings.signatureBase64}" alt="Unterschrift" style="max-height:60px;">`;
+    return;
+  }
+
   preview.innerHTML = '<span class="logo-placeholder">Keine Unterschrift</span>';
 }
 
@@ -1275,6 +1294,14 @@ async function uploadSignature() {
   try {
     const result = await window.api.uploadSignature();
     if (result) {
+      // Unterschrift als Base64 in Firebase speichern (Geräte-Sync)
+      const sigData = await window.api.readSignatureBase64(result);
+      if (sigData) {
+        store.settings.signatureBase64 = sigData.data;
+        store.settings.signatureMimeType = sigData.mimeType;
+        await store.saveSettings(store.settings);
+      }
+
       showToast('Unterschrift hochgeladen', 'success');
       await renderSignaturePreview();
     }
@@ -1285,6 +1312,12 @@ async function uploadSignature() {
 
 async function removeSignature() {
   await window.api.removeSignature();
+
+  // Auch aus Firebase entfernen
+  delete store.settings.signatureBase64;
+  delete store.settings.signatureMimeType;
+  await store.saveSettings(store.settings);
+
   await renderSignaturePreview();
   showToast('Unterschrift entfernt');
 }
@@ -2439,13 +2472,8 @@ async function generateSammelquittung() {
 
   try {
     const settings = store.settings || {};
-    let logoData = null;
-    const logoPath = await window.api.getLogo();
-    if (logoPath) logoData = await window.api.readLogoBase64(logoPath);
-
-    let signatureData = null;
-    const sigPath = await window.api.getSignature();
-    if (sigPath) signatureData = await window.api.readSignatureBase64(sigPath);
+    const logoData = await getLogoData();
+    const signatureData = await getSignatureData();
 
     const pdfBytes = await generateDonationReceiptPDF({
       donations,
@@ -2473,13 +2501,8 @@ async function exportDonationPDF(donationId) {
 
   try {
     const settings = store.settings || {};
-    let logoData = null;
-    const logoPath = await window.api.getLogo();
-    if (logoPath) logoData = await window.api.readLogoBase64(logoPath);
-
-    let signatureData = null;
-    const sigPath = await window.api.getSignature();
-    if (sigPath) signatureData = await window.api.readSignatureBase64(sigPath);
+    const logoData = await getLogoData();
+    const signatureData = await getSignatureData();
 
     const pdfBytes = await generateDonationReceiptPDF({
       donations: [donation],
@@ -3911,14 +3934,9 @@ async function generateLetter(e) {
   // Datum formatieren
   const date = dateRaw ? new Date(dateRaw).toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' }) : '';
 
-  // Logo + Unterschrift laden
-  let logoData = null;
-  const logoPath = await window.api.getLogo();
-  if (logoPath) logoData = await window.api.readLogoBase64(logoPath);
-
-  let signatureData = null;
-  const sigPath = await window.api.getSignature();
-  if (sigPath) signatureData = await window.api.readSignatureBase64(sigPath);
+  // Logo + Unterschrift laden (lokal mit Firebase-Fallback)
+  const logoData = await getLogoData();
+  const signatureData = await getSignatureData();
 
   try {
     const pdfBytes = await generateLetterPDF({
@@ -3943,6 +3961,35 @@ async function generateLetter(e) {
 }
 
 // --- Helpers ---
+// --- Logo/Unterschrift laden (lokal → Firebase Fallback) ---
+async function getLogoData() {
+  // 1. Lokale Datei
+  const logoPath = await window.api.getLogo();
+  if (logoPath) {
+    const data = await window.api.readLogoBase64(logoPath);
+    if (data) return data;
+  }
+  // 2. Firebase Fallback
+  if (store.settings && store.settings.logoBase64) {
+    return { data: store.settings.logoBase64, mimeType: store.settings.logoMimeType || 'image/png' };
+  }
+  return null;
+}
+
+async function getSignatureData() {
+  // 1. Lokale Datei
+  const sigPath = await window.api.getSignature();
+  if (sigPath) {
+    const data = await window.api.readSignatureBase64(sigPath);
+    if (data) return data;
+  }
+  // 2. Firebase Fallback
+  if (store.settings && store.settings.signatureBase64) {
+    return { data: store.settings.signatureBase64, mimeType: store.settings.signatureMimeType || 'image/png' };
+  }
+  return null;
+}
+
 function escapeHtml(str) {
   if (!str) return '';
   const div = document.createElement('div');
