@@ -184,11 +184,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
   <script>
-    let db = null;
-    let teamId = null;
-    let orgId = null;
-    let teamData = null;
-
     // Firebase Config — fest eingebaut
     const FIREBASE_CONFIG = {
       apiKey: "AIzaSyDDzRp_FTJby4g2luW27EwTP10nEh6OjOU",
@@ -198,6 +193,11 @@
       messagingSenderId: "248085816349",
       appId: "1:248085816349:web:4d0826289f210b186d12f4"
     };
+
+    let db = null;
+    let teamId = null;
+    let orgId = null;
+    let teamData = null;
 
     // URL-Parameter lesen
     const params = new URLSearchParams(window.location.search);

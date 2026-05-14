@@ -3100,7 +3100,7 @@ function showTeamLink(teamId) {
   const team = teams.find(t => t.id === teamId);
   if (!team) return;
 
-  const baseUrl = 'https://malikk065.github.io/Zakflow/docs/team.html';
+  const baseUrl = (store.settings && store.settings.teamLinkBase) || 'https://zakflow-aeab5.web.app/team.html';
   const orgParam = store.currentOrgId ? `&o=${store.currentOrgId}` : '';
   const url = `${baseUrl}?t=${teamId}${orgParam}`;
 
